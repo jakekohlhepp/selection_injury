@@ -9,8 +9,9 @@ set scheme cleanplots
 use data/01_01_estimation_sample, clear
 summ matched_injury if work==1
 cap eststo clear
-estimates load out/01_07_heckprob_results.ster
+estimates use out/01_01_heckprob_results.ster
 estimates esample: if sample_marked
+estimates store est1
 *** save table of estimates
 estadd scalar atanrho = [/athrho]
 estadd scalar atanrho_se = _se[/athrho]

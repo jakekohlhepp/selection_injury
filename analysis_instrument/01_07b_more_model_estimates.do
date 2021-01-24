@@ -7,10 +7,10 @@ set scheme cleanplots
 
 ** Purpose: Estimate additional quantities from the model.
 use data/01_01_estimation_sample, clear
-
 cap eststo clear
-estimates load out/01_07_heckprob_results.ster
+estimates use out/01_01_heckprob_results.ster
 estimates esample: if sample_marked
+estimates store est1
 
 eststo m1: margins , dydx(adj_count_any_leave lag_first_contact  seniority_rank max_rate) predict( psel) vce(unconditional) post
 estimates restore est1

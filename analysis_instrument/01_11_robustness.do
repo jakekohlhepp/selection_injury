@@ -28,8 +28,9 @@ local emp = r(unique)
 eststo clear
 preserve
 cap eststo clear
-estimates load out/01_07_heckprob_results.ster
+estimates use out/01_01_heckprob_results.ster
 estimates esample: if sample_marked
+estimates store est1
 lincom [work]_b[adj_count_any_leave]
 local se_i = r(se)
 nlcom tanh([/athrho])

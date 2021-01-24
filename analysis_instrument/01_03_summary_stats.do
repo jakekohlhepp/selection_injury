@@ -8,7 +8,7 @@ set scheme cleanplots
 //Purpose: create summary tables
 
 * do variation description tables
-insheet using /out/list_var_desc.csv, clear comma
+insheet using ../mkdata/out/list_var_desc.csv, clear comma
 drop if missing(variation_desc)
 rename variation_desc cleaned_variation_desc
 replace cleaned_variation_desc= subinstr(cleaned_variation_desc, "%", "\%",1)

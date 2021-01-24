@@ -8,8 +8,11 @@ set scheme cleanplots
 *** Purpose: perform auction simulations.
 use data/01_01_estimation_sample, clear
 cap eststo clear
-estimates load out/01_07_heckprob_results.ster
+estimates use out/01_01_heckprob_results.ster
 estimates esample: if sample_marked
+qui count if sample_marked
+local N = r(N)
+estimates store est1
 
 ***** chunk added for this module only*****
 * proxy the normal amount of labor as the number of standard hours divided by 8
@@ -24,8 +27,6 @@ gen regular_shifts = day_div_shifts-additional_shifts
 egen total_overall_shifts = total(work)
 
 ****** chunk added for this module only ******
-cap eststo clear
-estimates load out/01_07_heckprob_results.ster
 predict zb, xbsel
 predict raw_zb, xbsel
 predict xb, xb
@@ -192,17 +193,20 @@ summ pctdiff2, d
 summ diff2, d
 
 *** distributions
-replace listres = listres/181597
-replace auctionres = auctionres/181597
-replace bestresult = bestresult/181597
+replace listres = listres/`N'
+replace auctionres = auctionres/`N'
+replace bestresult = bestresult/`N'
 
 label variable listres "Random List"
 label variable auctionres "Shift Auction"
-label variable auctionres "Full Information"
+label variable bestresult "Full Information"
 * add this to notes: "Uses Epanechnikov kernel, with STATA's default bandwith optimizer."
 twoway kdensity bestresult || kdensity auctionres || kdensity listres , xtitle("Injury Rate (Injuries/Shifts Worked)") ytitle("Density") legend(label(1 "Full Information") label( 2 "Shift Auction") label( 3 "Random List") position(6) cols(3))
 graph export out/01_09_distribution_plots.pdf, replace
 
+estpost tabstat listres auctionres bestresult, statistics(mean p5 p95) columns(statistics)
+esttab using out/01_09_auction.tex, cells("mean(fmt(4)) p5(fmt(4)) p95(fmt(4))") label nomtitle nonumber replace
+ 
 log close
 
 
