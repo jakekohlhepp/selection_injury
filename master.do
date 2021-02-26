@@ -3,9 +3,6 @@
 *** NEED DIRECTORY STRUCTURE+PROGRAMS AND RAW DATA FILES
 **** MUST SET WORKING DIRECTORY TO THE FOLDER WHICH CONTAINS MKDATA AND ANALYSIS_INSTRUMENT
 **** Create the data
-* mast have these ssc packages
-cap ssc install unique
-cap ssc install esttab
 * must have these two raw data files
 confirm file mkdata/20170803_payworkers_comp/data/anonymized_data_073117.dta
 confirm file mkdata/20190811_weather/data/1834210.csv

@@ -12,6 +12,15 @@ estimates use out/01_01_heckprob_results.ster
 estimates esample: if sample_marked
 estimates store est1
 
+*** estimate work probability with respect to injury.
+estimates restore est1
+margins, expression(normal((xb(work)+tanh([/athrho])*adj_count_any_leave)/(1-tanh([/athrho])^2)^(1/2))) at(adj_count_any_leave=(-1(0.05)1)) vce(unconditional)
+marginsplot, xlabel(-1(0.25)1) recast(line) recastci(rarea) plot1opts(lcolor(blue)) ciopt(color(black%20)) mcompare(bonferroni) ytitle("Daily Labor Supply") xtitle("Unobserved Injury Risk") nolabels title("")
+graph export out/01_07b_labor_supply.pdf, replace
+
+****
+
+estimates restore est1
 eststo m1: margins , dydx(adj_count_any_leave lag_first_contact  seniority_rank max_rate) predict( psel) vce(unconditional) post
 estimates restore est1
 eststo m2: margins , dydx(adj_count_any_leave lag_first_contact  seniority_rank max_rate) predict( pcond) vce(unconditional) post

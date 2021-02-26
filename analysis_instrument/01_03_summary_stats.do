@@ -211,7 +211,7 @@ preserve
 bys adj_count_any_leave: egen mean_work = mean(work)
 twoway histogram adj_count_any_leave,bin(20) fraction ylabel(0(0.1)0.3, nogrid) xlabel(, grid gmax) name(hx, replace) fysize(25) 
 collapse (mean) work, by(adj_count_any_leave)
-twoway lowess  work adj_count_any_leave , xsca(alt) xlabel(, grid gmax) name(yx, replace) ytitle("Smoothed Injury Probability")
+twoway lowess  work adj_count_any_leave , xsca(alt) xlabel(, grid gmax) name(yx, replace) ytitle("Smoothed Work Probability")
 graph combine yx hx,  rows(2) cols(1) imargin(zero) graphregion(margin(l=22 r=22))
 graph export out/01_03_leave_instrument_viz.pdf, replace
 restore
@@ -222,7 +222,7 @@ twoway histogram lag_first_contact,bin(38) fraction ylabel(0(0.06)0.18, nogrid) 
 gen floor_first_contact = floor(lag_first_contact/5)*5
 label variable floor_first_contact "Cumulative Officer Potential Contacts"
 collapse (mean) work, by(floor_first_contact)
-twoway lowess  work floor_first_contact , xsca(alt) xlabel(, grid gmax) name(yx, replace) ytitle("Smoothed Injury Probability")
+twoway lowess  work floor_first_contact , xsca(alt) xlabel(, grid gmax) name(yx, replace) ytitle("Smoothed Work Probability")
 graph combine yx hx,  rows(2) cols(1) imargin(zero) graphregion(margin(l=22 r=22))
 graph export out/01_03_contacts_instrument_viz.pdf, replace
 restore
