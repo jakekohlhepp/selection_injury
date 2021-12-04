@@ -8,36 +8,68 @@ set scheme cleanplots
 ** Purpose: Estimate additional quantities from the model.
 use data/01_01_estimation_sample, clear
 cap eststo clear
-estimates use out/01_01_heckprob_results.ster
+estimates use out/01_02_heckprob_results.ster
 estimates esample: if sample_marked
+keep if has_datevar==1
 estimates store est1
+
+
+estimates restore est1
+* conditional injury rate
+summ matched_injury if work==1
+margins, predict(pcond) predict(pmargin) vce(unconditional)
+
+* unconditional injury rate
+margins, predict(pmargin) vce(unconditional)
+
+
+* counterfactual injury probablity point estimate
+margins if dayofweek>0 & dayofweek<5, predict(pmargin)
+summ matched_injury if dayofweek>0 & dayofweek<5
+
+predict psel, psel
+bys dayofweek: summ psel 
+
+*** compute lower bound of counterfactual injury probability on weekday.
+drop v*
+estimates restore est1
+local i = 0
+forvalues x = 0.01(0.01)0.98{
+local i = `i'+1
+predictnl v`i' = normal((xb(matched_injury)-tanh([/athrho])*invnormal(`x') )/(1-tanh([/athrho])^2)^(1/2))
+
+}
+gen v0 = 0
+replace v`i' = v`i' /2
+
+preserve
+keep if dayofweek>0 & dayofweek<5
+collapse (mean) v*
+egen tot = rowtotal(v*)
+replace tot = 0.01*tot
+tab tot
+restore
+*** upper bound is just 2%
 
 *** estimate work probability with respect to injury.
 estimates restore est1
-margins, expression(normal((xb(work)+tanh([/athrho])*adj_count_any_leave)/(1-tanh([/athrho])^2)^(1/2))) at(adj_count_any_leave=(-1(0.05)1)) vce(unconditional)
-marginsplot, xlabel(-1(0.25)1) recast(line) recastci(rarea) plot1opts(lcolor(blue)) ciopt(color(black%20)) mcompare(bonferroni) ytitle("Daily Labor Supply") xtitle("Unobserved Injury Risk") nolabels title("")
+margins if dayofweek<5 & dayofweek>0, expression(normal((xb(work)+tanh([/athrho])*invnormal(adj_div_8_leave_count) )/(1-tanh([/athrho])^2)^(1/2))) at(adj_div_8_leave_count=(0.001(0.09)0.901))
+marginsplot, xlabel(0(0.2)0.9) recast(line) recastci(rarea) plot1opts(lcolor(black)) ciopt(fcolor(black%0) lcolor(black) lpattern(dash)) mcompare(bonferroni) ytitle("Daily Labor Supply") xtitle("Quantiles of Private Injury Risk") nolabels title("")
 graph export out/01_07b_labor_supply.pdf, replace
 
 ****
 
 estimates restore est1
-eststo m1: margins , dydx(adj_count_any_leave lag_first_contact  seniority_rank max_rate) predict( psel) vce(unconditional) post
+eststo m1: margins if dayofweek<5 & dayofweek>0, dydx(adj_div_8_leave_count  seniority_rank max_rate) predict( psel) post
 estimates restore est1
-eststo m2: margins , dydx(adj_count_any_leave lag_first_contact  seniority_rank max_rate) predict( pcond) vce(unconditional) post
+eststo m2: margins if dayofweek<5 & dayofweek>0, dydx(adj_div_8_leave_count  seniority_rank max_rate) predict( pcond) post
 esttab m1 m2  using out/1_07b_average_partial_effects.tex, unstack star(* 0.10 ** 0.05 *** 0.01) se replace nomtitle label eqlabels("Work" "Injury Conditional on Work")  nonumbers
-
-estimates restore est1
-* conditional injury rate
-summ matched_injury if work==1
-margins, predict(pcond) vce(unconditional)
-* unconditional injury rate
-margins, predict(pmargin) vce(unconditional)
 
 * mean and variance of injury fixed effects
 estimates restore est1
-predictnl fe_work=[work]_b[bar_adj_count_any_leave]*bar_adj_count_any_leave + [work]_b[bar_max_rate]*bar_max_rate+[work]_b[bar_an_age]*bar_an_age+[work]_b[bar_lag_first_contact]*bar_lag_first_contact
+predictnl fe_work=[work]_b[bar_adj_div_8_leave_count]*bar_adj_div_8_leave_count + [work]_b[bar_max_rate]*bar_max_rate
 label variable fe_work "Time-Constant Work Heterogeneity"
-predictnl fe_inj=[matched_injury]_b[bar_adj_count_any_leave]*bar_adj_count_any_leave + [matched_injury]_b[bar_max_rate]*bar_max_rate+[matched_injury]_b[bar_an_age]*bar_an_age+[matched_injury]_b[bar_lag_first_contact]*bar_lag_first_contact
+predictnl fe_inj=[matched_injury]_b[bar_adj_div_8_leave_count]*bar_adj_div_8_leave_count + [matched_injury]_b[bar_max_rate]*bar_max_rate
 label variable fe_inj "Time-Constant Injury Heterogeneity"
 summ fe_work,d
 local v1 = r(Var)

@@ -7,10 +7,20 @@ set scheme cleanplots
 
 ** Purpose: Estimate additional quantities from the model.
 use ../mkdata/data/01_05_working_with_leave, clear
+encode employee_name, gen(empid)
+gen year = year(analysis_workdate)
+gen month = month(analysis_workdate)
+gen dayofweek = dow(analysis_workdate)
+gen week = week(analysis_workdate)
+label define weekday 0 "Sunday" 1 "Monday" 2 "Tuesday" 3 "Wednesday" 4 "Thursday" 5 "Friday" 6 "Saturday"
+label values dayofweek weekday
+isid employee_name analysis_workdate
 
+gen grouped_div = main_div if main_div>=800
+replace grouped_div = 999 if main_div<=800
+egen grouped = group(grouped_div analysis_workdate)
+gen isweekend = (dayofweek==0 | dayofweek==6)
 *** Purpose: Sample restrictions for all analysis programs.
-* also xtset data, create month and dayofweek variables.
-* generate the lagged value of overtime 
 
 
 * assume that the data begins in earnest in january of 2015, and trails off in september of 2016.
@@ -75,12 +85,6 @@ drop _daybefore _daybeforefix _tag
 count if work==1 & tot_hours==0
 assert r(N)==6
 
-gen month = month(analysis_workdate)
-gen dayofweek = dow(analysis_workdate)
-label define weekday 0 "Sunday" 1 "Monday" 2 "Tuesday" 3 "Wednesday" 4 "Thursday" 5 "Friday" 6 "Saturday"
-label values dayofweek weekday
-isid employee_name analysis_workdate
-
 * make time based on numbers of days worked.
 gen _workcounter = work
 bys employee_name (analysis_workdate): gen days_worked_since20150101 = sum(_workcounter)
@@ -91,50 +95,12 @@ drop _workcounter
 drop if tot_days_worked_fullperiod==0
 
 
-gen div_leave_exclude = div_leavehours - leave_hours
-gen ot_today = tot_hours >8
-gen cum_hours_4 = tot_hours_lag1 + tot_hours_lag2 + tot_hours_lag3 + tot_hours_lag4
-xtset empid analysis_workdate
-
-gen daysworked_past6 =0
-forvalues x =1(1)6{
- replace daysworked_past6 = daysworked_past6 +1 if tot_hours_lag`x'>0
-}
-
-xtset empid analysis_workdate
-gen daysshould_worked6 =0
-forvalues x =1(1)6{
- replace daysshould_worked6 = daysshould_worked6 +1 if tot_hours_lag`x'>0 | (L`x'.leave_hours>0 & L`x'.leave_hours!=.)
-}
-
-gen daysshould_worked13 =0
-forvalues x =1(1)13{
- replace daysshould_worked13 = daysshould_worked13 +1 if (L`x'.tot_hours>0 &L`x'.tot_hours!=.)  | (L`x'.leave_hours>0 & L`x'.leave_hours!=.)
-}
-
-
 *** create some more instrument/helper variables
 gen workflag = work==1 | leave_hours >0
 bys employee_name (analysis_workdate): gen stints = workflag!=workflag[_n-1]
 bys employee_name (analysis_workdate): replace stints = sum(stints)
 bys employee_name stints (analysis_workdate): gen stint_length = _N
 bys employee_name: egen modelength = mode(stint_length ) if workflag ==1
-
-* construct leave/sick measures - basic measures adjusted for own leave
-gen adj_count_any_leave = div_count_any_leave - (lhours_1>0) if main_div==div1
-replace adj_count_any_leave = div_count_any_leave - (lhours_2>0) if main_div==div2
-replace adj_count_any_leave = div_count_any_leave if missing(adj_count_any_leave)
-gen adj_count_any_sick = div_count_any_sick - (shours_1>0)  if main_div==div1
-replace adj_count_any_sick = div_count_any_sick - (shours_2>0)  if main_div==div2
-replace adj_count_any_sick = div_count_any_sick if missing(adj_count_any_sick)
-gen adj_nosick_leave = adj_count_any_leave - adj_count_any_sick
-assert adj_count_any_leave >=0
-assert adj_count_any_sick >=0
-
-
-* make new division variable
-gen grouped_div = main_div if main_div>=800
-replace grouped_div = 999 if main_div<=800
 
 * need to control for seniority, time at company, age, hours during last 5 shifts
 assert !missing(original_hire_date)
@@ -157,9 +123,8 @@ label variable age_20150101 "Age"
 label variable max_rate "Wage"
 label variable an_age "Age"
 label variable seniority_rank "Seniority Rank"
-label variable adj_count_any_leave "Leave of Others (Count)"
-label variable work "Work"
-
+label variable pct_others_indiv_leave "Leave of Coworkers (%)"
+label variable adj_div_leave_hours "Leave Hours of Coworkers"
 
 * create value holding date of first observed injury
 bys empid matched_injury (analysis_workdate): gen first_inj_date = analysis_workdate if matched_injury==1
@@ -170,28 +135,26 @@ bys empid (analysis_workdate): gen div_before = main_div[_n-1]
 
 drop if work==0 & leave_hours>0
 
-* note that we should not include day of the week time means, as this is endogenous.
 
-
-foreach var of varlist adj_count_any_leave max_rate an_age lag_first_contact {
-    by empid: egen bar_`var' = mean(`var')
-    local label: variable label `var'
-    label variable bar_`var' "Avg. `label'"
-}
 
 label variable matched_injury "Injury"
 label variable an_age "Age"
 label variable is_holiday "Holiday"
 label variable prcp "Amount Rain (in.)"
 label variable tmax "Max. Daily Temp."
-label variable adj_count_any_leave "Leave of Coworkers (count)"
+label variable pct_others_indiv_leave "Leave of Coworkers (%)"
+label variable adj_div_leave_hours "Leave of Coworkers (hours)"
+label variable adj_div_8_leave_count "Coworkers on Leave"
 label variable max_rate "Wage"
 label variable tenure "Tenure (years)"
 label variable seniority_rank "Seniority Rank"
-label variable bar_adj_count_any_leave "Avg. Coworker Leave"
-label variable bar_max_rate "Avg. Wage"
-label variable bar_lag_first_contact "Avg. Cum. Potential Contacts"
-label variable lag_first_contact "Cumulative Officer Potential Contacts"
+
+foreach var of varlist adj_div_8_leave_count max_rate {
+    bys empid: egen bar_`var' = mean(`var')
+    local label: variable label `var'
+    label variable bar_`var' "Avg. `label'"
+}
+
 
 * drop all non-work days before first work day after injury.
 gen lastinj = analysis_workdate if matched_injury==1
@@ -205,17 +168,9 @@ keep if analysis_workdate >=firstworkday
 * also exclude first day worked after injury.
 drop if firstworkday == analysis_workdate
 
-
-
-********* RUN MAIN ANALYSIS
+* analysis has date dummies. only keep observations with variation within date.
 cap eststo clear
-eststo: heckprobit matched_injury bar_* i.month i.dayofweek i.grouped_div an_age is_holiday prcp tmax max_rate, select(work = bar_* i.grouped_div i.month i.dayofweek an_age is_holiday prcp tmax adj_count_any_leave lag_first_contact  seniority_rank max_rate) vce(cluster empid)
-estimates save out/01_01_heckprob_results.ster, replace
-* mark sample
-qui summarize work if e(sample)
-assert _N == r(N)
-gen sample_marked = e(sample)
-*******
+bys analysis_workdate (matched_injury): gen has_datevar = matched_injury[1]!=matched_injury[_N]
 
 save data/01_01_estimation_sample, replace
 log close

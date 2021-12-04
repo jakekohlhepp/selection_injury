@@ -105,7 +105,7 @@ assert !missing(types)
 * by person, choose the var_rate that is highest. note that all regular base rates are less than 40.
 * so any rates over 40 are clearly not work pay rates.
 assert var_rate<34 if work==1
-table variation_description if var_rate>34
+tab variation_description if var_rate>34
 by employee_name work_date: egen max_rate = max(var_rate)
 assert max_rate>=0
 replace max_rate = -99 if max_rate>34
