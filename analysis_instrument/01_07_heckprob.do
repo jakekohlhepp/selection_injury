@@ -132,20 +132,20 @@ gen num=_n
 
 * graph elasticity
 label variable privaterisk "Quantiles of Private Injury Risk"
-twoway line elast ll ul resistance, sort lpattern(solid dash dash) lcolor(black black black) legend(off) ytitle("Elasticity of Labor Supply")
+twoway line elast ll ul privaterisk, sort lpattern(solid dash dash) lcolor(black black black) legend(off) ytitle("Elasticity of Labor Supply")
 graph export out/01_07_laborsupply_elast.pdf, replace
 
-keep elast resistance se
+keep elast privaterisk se
 expand 2, gen(_tag)
 local more = _N+1
 set obs `more'
-replace resistance = -99 if missing(resistance)
-sort resistance _tag
-replace resistance = . if resistance==-99
+replace privaterisk = -99 if missing(privaterisk)
+sort privaterisk _tag
+replace privaterisk = . if privaterisk==-99
 tostring  elast se, force replace format(%8.3fc)
-tostring  resistance, force replace format(%8.2fc)
+tostring  privaterisk, force replace format(%8.2fc)
 replace elast = "(" + se +")" if _tag==1
-replace resistance="" if _tag==1
+replace privaterisk="" if _tag==1
 drop _tag se
 
 foreach var of varlist * {

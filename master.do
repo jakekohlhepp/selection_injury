@@ -31,18 +31,26 @@ cd ../analysis_instrument/
 * make analysis sample and also run main model.
 do 01_01_mk_sample
 
-* summary tables
-do 01_03_summary_stats
+* run main model.
+do 01_02_run_heckprob
+
+* summary stats
+do 01_03_descriptives
+
+
 * fixed effects iv (proxy model)
 do 01_05_xtiv
 * we fit using MLE, so optimization will change based on random starting point. need to set seed
 set seed 4563
 
-* run main model, compute margins
+* main estimates/tables.
 do 01_07_heckprob
 
 * compute more structural estimates from main model
 do 01_07b_more_model_estimates
+
+* make heatmap and lower bound estimates of ATE
+do 01_07c_heatmap
 
 * compute value of injury.
 do 01_08_valueinj
@@ -57,3 +65,5 @@ do 01_10_instrument_check
 do 01_11_robustness.do
 
 cd ../
+* run this in unix to check output the same.
+* diff -r -q /path/to/dir1 /path/to/dir2
