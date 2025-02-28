@@ -21,11 +21,23 @@ label values ever_injured injgroup
 
 *** do graphs of instrument relevance
 preserve
+** remove those on leave
+
 twoway histogram adj_div_8_leave_count,bin(20) fraction ylabel(0(0.1)0.3, nogrid) xlabel(, grid gmax) name(hx, replace) fysize(25)
 collapse (mean) work,by(adj_div_8_leave_count)
 twoway scatter  work adj_div_8_leave_count , xsca(alt) xlabel(, grid gmax) name(yx, replace) ytitle("Work Probability")
 graph combine yx hx,  rows(2) cols(1) imargin(zero) graphregion(margin(l=22 r=22))
 graph export out/01_03_leave_instrument_viz.pdf, replace
+restore
+
+**** by day of week
+preserve
+gen r_adj_div_8_leave_count = round(adj_div_8_leave_count,2)
+collapse (mean) work,by(r_adj_div_8_leave_count dayofweek)
+twoway scatter  work r_adj_div_8_leave_count if r_adj_div_8_leave_count<30 & dayofweek>0 & dayofweek<6,  ytitle("Work Probability") by(dayofweek, legend(off))
+twoway scatter  work r_adj_div_8_leave_count if r_adj_div_8_leave_count<30 & (dayofweek==0 | dayofweek==6),  ytitle("Work Probability") by(dayofweek, legend(off))
+
+
 restore
 
 *** do graphs of selection

@@ -77,28 +77,78 @@ hist month if outlier!=1, discrete density subtitle("Outliers Excluded")
 if "`print_pic'"=="yes" graph export out/01_02_freq_compclaims_nooutliers.pdf, replace
 ****
 
+
+*** save job_status terms
+use 20170803_payworkers_comp/data/anonymized_data_073117, clear
+* job_end_date is always blank
+assert  job_end_date==.
+gen analysis_workdate = dofc(job_status_date)
+format analysis_workdate %td
+keep if inlist(job_status, "Transferred Out", "Terminated")
+keep analysis_workdate employee_name
+duplicates drop
+gen status_term = 1
+tempfile status_terms
+save `status_terms'
+****
+
+
+
+*** now begin working on pay data.
 use data/pay_data, clear
-gen term_observed = cleaned_variation_desc =="TERMINATION CODE /  HOURS NO PAY"
+
+* save out just termination paycodes
+preserve
+keep if strpos(variation_description, "TERM")>0
+gen analysis_workdate = dofc(work_date)
+format analysis_workdate %td
+keep analysis_workdate variation_description employee_name
+duplicates drop
+
+* keep first observed termination code in streak
+collapse (min) analysis_workdate, by(employee_name)
+append using `status_terms'
+duplicates drop analysis_workdate employee_name, force
+
+* if the termination is before fiscal year 2014-2015, drop
+drop if analysis_workdate<d(01jul2014) 
+
+* verify that all conflicts are within a year.
+bys employee_name (analysis_workdate): gen diff = analysis_workdate[_N]-analysis_workdate[1]
+assert diff<=365
+bys employee_name (analysis_workdate): gen count = _n
+
+* use first termination record.
+drop if count>1
+drop count
+
+* unique by employee
+isid employee_name
+keep employee_name analysis_workdate
+rename analysis_workdate term_date
+tempfile terms
+save `terms'
+restore
+
 * only work pay codes.
-keep if work==1 | strpos(variation_description, "IOD")>0 | out_type==1 | term_observed==1
+keep if work==1 | strpos(variation_description, " IOD ")>0 | out_type==1 
 * examine the effective rate.
 gen test_rate = pay_amount/hours
+
 * remove 0 test rates from hours worked.
 drop if test_rate==0 & work==1
 
-* zero out hours for iod shifts, termination shifts.
 gen iod_flag = 1 if strpos(variation_description, "IOD")>0
 * are the following unique within person-day?
 bys employee_name work_date: assert dept==dept[1]
-bys employee_name work_date: assert job_class_title==job_class_title[1]
 
 * collapse to day. we allow corrections (negatives to cancel out hours)
-gen varot_hours = hours if strpos(lower(variation_description), "overtime")>0
+gen varot_hours = hours if strpos(lower(variation_description), "overtime")>0 & work==1
 replace varot_hours= 0 if missing(varot_hours)
 gen varstandard_hours = hours if strpos(lower(variation_description), "overtime")==0
 replace varstandard_hours=0 if missing(varstandard_hours)
 
-gen types = "not leave" if work==1 | iod_flag==1 | term_observed==1
+gen types = "not leave" if work==1 | iod_flag==1 
 replace types = cleaned_variation_desc if out_type==1
 assert !missing(types)
 
@@ -113,22 +163,34 @@ replace max_rate = -99 if max_rate>34
 
 gen ot_pay_amount = pay_amount*(strpos(lower(variation_description), "overtime")>0)
 gen work_pay_amount = pay_amount*work
-collapse (sum) tot_hours = hours varstandard_hours varot_hours work_pay_amount ot_pay_amount (firstnm) iod_flag term_observed, by(employee_name work_date dept yearsoldonworkdate job_class_title div types sick_subset maximum_gap_2015 max_rate gap_end)
+
+* divs are not all locations. to get div, set to missing all divs that are not locations
+*gen geo_div = "Central" if div==810 | div==812
+*replace geo_div = "Harbor Traffic Control" if div==828
+*replace geo_div = "Harbor Traffic Control" if div==828
+*replace geo_div = "Hollywood" if div==811 | div==819
+*replace geo_div = "Southern" if div==809 | div==818
+*replace geo_div = "Southern" if div==809 | div==818
+*replace geo_div = "Valley" if div==816
+*replace geo_div = "Western" if div==814
+
+rename div geo_div
+
+** only keep 800 codes
+replace geo_div = . if geo_div<800
+
+
+collapse (sum) tot_hours = hours varstandard_hours varot_hours work_pay_amount ot_pay_amount (firstnm) iod_flag, by(employee_name work_date dept yearsoldonworkdate geo_div types sick_subset maximum_gap_2015 max_rate)
+
 
 * for the categories of leave time, zero out negatives so things don't cancel across categories
 replace tot_hours=0 if tot_hours<0 & types!="not leave"
 
 * now collapse to just leave vs not leave.
 replace types = "leave" if types!="not leave"
-preserve
-keep if sick_subset==1
-tempfile add
-save `add'
-restore
-replace sick_subset=.
-append using `add'
 
-collapse (sum) tot_hours varstandard_hours varot_hours work_pay_amount ot_pay_amount (firstnm) iod_flag term_observed, by(employee_name work_date dept yearsoldonworkdate job_class_title div types sick_subset maximum_gap_2015 max_rate gap_end)
+collapse (sum) tot_hours varstandard_hours varot_hours work_pay_amount ot_pay_amount (firstnm) iod_flag, by(employee_name work_date dept yearsoldonworkdate geo_div types sick_subset maximum_gap_2015 max_rate)
+
 
 * now create separate var for leave time and zero out tot_hours for leave time and sum it all.
 gen leave_hours = tot_hours if types=="leave"
@@ -137,16 +199,29 @@ assert !missing(leave_hours)
 gen sick_hours = tot_hours if sick_subset==1
 replace sick_hours=0 if sick_subset!=1
 replace tot_hours=0 if types=="leave"
-collapse (sum) tot_hours leave_hours sick_hours varstandard_hours varot_hours work_pay_amount ot_pay_amount (firstnm) iod_flag term_observed, by(employee_name work_date dept yearsoldonworkdate job_class_title div maximum_gap_2015 max_rate gap_end)
+collapse (sum) tot_hours leave_hours sick_hours varstandard_hours varot_hours work_pay_amount ot_pay_amount (firstnm) iod_flag, by(employee_name work_date dept yearsoldonworkdate geo_div maximum_gap_2015 max_rate)
 
-bys employee_name work_date (tot_hours div): assert _N<=2
-bys employee_name work_date (tot_hours div): gen div1 = div[1]
-bys employee_name work_date (tot_hours div): gen div2 = div[2]
-bys employee_name work_date (tot_hours div): gen lhours_1 = leave_hours[1]
-bys employee_name work_date (tot_hours div): gen lhours_2 = leave_hours[2]
-bys employee_name work_date (tot_hours div): gen shours_1 = sick_hours[1]
-bys employee_name work_date (tot_hours div): gen shours_2 = sick_hours[2]
-collapse (sum) leave_hours tot_hours sick_hours varstandard_hours varot_hours work_pay_amount ot_pay_amount (firstnm) iod_flag term_observed, by(employee_name work_date dept yearsoldonworkdate job_class_title div1 div2 maximum_gap_2015 max_rate lhours_1 lhours_2 shours_1 shours_2 gap_end)
+*** save out the data at the div-officer-day level for network creation.
+isid employee_name work_date geo_div,m
+preserve
+keep if varstandard_hours>0 | varot_hours>0
+keep if !missing(geo_div)
+gen analysis_workdate = dofc(work_date)
+keep geo_div employee_name analysis_workdate
+format analysis_workdate %td
+save data/01_02_fornetwork, replace
+restore
+
+
+
+bys employee_name work_date (tot_hours geo_div): assert _N<=2
+bys employee_name work_date (tot_hours geo_div): gen div1 = geo_div[1]
+bys employee_name work_date (tot_hours geo_div): gen div2 = geo_div[2]
+bys employee_name work_date (tot_hours geo_div): gen lhours_1 = leave_hours[1]
+bys employee_name work_date (tot_hours geo_div): gen lhours_2 = leave_hours[2]
+bys employee_name work_date (tot_hours geo_div): gen shours_1 = sick_hours[1]
+bys employee_name work_date (tot_hours geo_div): gen shours_2 = sick_hours[2]
+collapse (sum) leave_hours tot_hours sick_hours varstandard_hours varot_hours work_pay_amount ot_pay_amount (firstnm) iod_flag, by(employee_name work_date dept yearsoldonworkdate div1 div2 maximum_gap_2015 max_rate lhours_1 lhours_2 shours_1 shours_2)
 
 isid employee_name work_date
 
@@ -188,25 +263,39 @@ replace leave_hours = 0 if missing(leave_hours)
 replace sick_hours=0 if missing(sick_hours)
 
 sort employee_name analysis_workdate
+tempfile data
+save `data'
 
-qui levelsof employee_name, local(emps)
-tempfile all
-save `all'
-clear
-tempfile output
-save `output', emptyok
-foreach emp of local emps {
-	use `all', clear
-	keep if employee_name=="`emp'"
-	tsset, clear
-	tsset analysis_workdate
-	tsfill
-	replace employee_name = employee_name[1]
-    replace maximum_gap_2015=maximum_gap_2015[1]
-	append using `output'
-	save `output', replace
-	
-}
+** expand the data to include the the fiscal years 2014-2015 and 2015-2016
+use data/employee_data, clear
+gen date_start = dofc(original_hire_date) if dofc(original_hire_date)>d(01jul2014)
+replace date_start =d(01jul2014) if dofc(original_hire_date)<=d(01jul2014)
+assert !missing(date_start)
+keep employee_name date_start
+duplicates drop
+format date_start %td
+merge 1:1 employee_name using `terms'
+assert _m!=2
+drop _m
+gen date_end = d(30jun2016) if term_date>d(30jun2016)
+replace date_end = term_date if term_date<=d(30jun2016)
+format date_end %td
+isid employee_name
+drop term_date
+reshape long date, i(employee_name) j(type) string
+isid employee_name date
+drop type
+encode employee_name, gen(empid)
+xtset empid date
+tsfill
+rename date analysis_workdate
+
+bys empid (employee_name analysis_workdate): replace employee_name = employee_name[_N]
+assert !missing(employee_name)
+
+merge 1:1 employee_name analysis_workdate using `data'
+drop if _m==2
+
 
 replace tot_hours = 0 if missing(tot_hours) // this is crucial.
 replace leave_hours = 0 if missing(leave_hours)
@@ -232,120 +321,29 @@ label variable cum_varot_hours "Cum. Sum. of all OT Hours Based on Var Desc."
 drop work_date
 assert !missing(analysis_workdate)
 
-*** for the gap: fill the gap backwards until we observe leave hours or work hours.
-gsort employee_name -analysis_workdate
-by employee_name: replace gap_end = gap_end[_n-1] if tot_hours==0 & leave_hours==0
-* for things not in the gap, set gap to -1
-replace gap_end = -1 if missing(gap_end)
-replace gap_end = -1 if gap_end==analysis_workdate
 
 
 ************** re-attach identifying information like hire date, etc. 
-merge m:1 employee_name using data/employee_data, keepusing(original_hire_date job_end_date job_status)
-assert _m!=1
-drop if _m==2
-drop _m
+rename _m _mold
+merge m:1 employee_name using data/employee_data
+assert _merge==3
+drop _merge
 assert !missing(original_hire_date) & !missing(job_status)
 
-* make a rolling varcode ot for the last seven days.
-bys employee_name (analysis_workdate): gen roll_7days_varot_hours = varot_hours+varot_hours[_n-1]+varot_hours[_n-2]+ varot_hours[_n-3]+varot_hours[_n-4]+varot_hours[_n-5]+varot_hours[_n-6] if _n>=7
-label variable roll_7days_varot_hours "Rolling sum of OT Based on var Desc"
+***** 44 officers have no observed leave or work hours 
+***** spot checks show that they are due to residual paycodes or work that is outside the window
+***** remove these.
+bys employee_name (_mold): gen all_miss = _mold[_N]==1
+unique employee_name if all_miss==1
+assert r(sum)==44
+drop if all_miss==1
+drop all_miss _mold
 
-***** WEEKLY *************************************
-* a week is defined as Sunday to Saturday. 
-* all hours over 40 are considered weekly overtime. 
+*****
+
 gen an_week = wofd(analysis_workdate)
 gen an_month= mofd(analysis_workdate)
 format an_week %tw 
-bys employee_name an_week (analysis_workdate): gen _temp = max(cum_tot_hours - cum_tot_hours[1]-40+tot_hours[1], 0)
-assert _temp!=.
-bys employee_name an_week  (_temp analysis_workdate): gen exp_40wk=_temp[_N]>0
-bys employee_name an_month  (_temp analysis_workdate): gen m_exp_40wk=_temp[_N]>0
-bys employee_name an_month (analysis_workdate): gen m_weekly_overtime_40 = sum(_temp)
-label variable m_weekly_overtime_40 "Month sum of all Hours Worked Over 40 in a Week"
-label variable exp_40wk "Worked more than 40 hours this week?"
-label variable m_exp_40wk "Worked more than 40 hours in a week this month?"
-drop _temp 
-* all hours over 60 are considered weekly overtime. 
-bys employee_name an_week (analysis_workdate): gen _temp = max(cum_tot_hours - cum_tot_hours[1]+tot_hours[1]-60, 0)
-assert _temp!=.
-bys employee_name an_week  (_temp analysis_workdate): gen exp_60wk=_temp[_N]>0
-bys employee_name an_month  (_temp analysis_workdate): gen m_exp_60wk=_temp[_N]>0
-bys employee_name an_month (analysis_workdate): gen m_weekly_overtime_60 = sum(_temp)
-label variable m_weekly_overtime_60 "Month Sum of all Hours Worked Over 60 in A Week"
-label variable exp_60wk "Worked more than 60 hours this week?"
-label variable m_exp_60wk "Worked more than 60 hours in a week this month?"
-drop _temp 
-
-* all hours over 8 in a day 
-gen _temp = max(tot_hours - 8,0)
-assert _temp!=.
-bys employee_name an_week  (_temp analysis_workdate): gen exp_8day=_temp[_N]>0
-bys employee_name an_month  (_temp analysis_workdate): gen m_exp_8day=_temp[_N]>0
-bys employee_name an_month (analysis_workdate): gen m_daily_overtime_8 = sum(_temp)
-label variable m_daily_overtime_8 "Sum of all Hours Worked Over 8 in a Day this month"
-label variable exp_8day "Worked more than 8 hours in a day this week?"
-label variable m_exp_8day "Worked more than 8 hours in a day this month?"
-* hours worked over 8 in a day in the last 7 days
-bys employee_name (analysis_workdate): gen r_over8day_2days = _temp + _temp[_n-1] if _n>=7
-label variable r_over8day_2days "Rolling sum of hours over 8, 2 day"
-bys employee_name (analysis_workdate): gen r_over8day_7days = _temp + _temp[_n-1] + _temp[_n-2]+_temp[_n-3]+_temp[_n-4]+_temp[_n-5]+_temp[_n-6] if _n>=7
-label variable r_over8day_7days "Rolling sum of hours over 8 in a day 7 window"
-drop _temp
-
-* all hours over 12 in a day 
-gen _temp = max(tot_hours - 12,0)
-assert _temp!=.
-bys employee_name an_week  (_temp analysis_workdate): gen exp_12day=_temp[_N]>0
-bys employee_name an_month  (_temp analysis_workdate): gen m_exp_12day=_temp[_N]>0
-bys employee_name (analysis_workdate): gen m_daily_overtime_12 = sum(_temp)
-label variable m_daily_overtime_12 "Sum of all Hours Worked Over 12 in a day this month"
-label variable exp_12day "Worked more than 12 hours in a day this week?"
-label variable m_exp_12day "Worked more than 12 hours in a day this month?"
-
-* hours worked over 12 in a day in the last 7 days
-bys employee_name (analysis_workdate): gen r_over12day_7days = _temp + _temp[_n-1] + _temp[_n-2]+_temp[_n-3]+_temp[_n-4]+_temp[_n-5]+_temp[_n-6] if _n>=7
-label variable r_over12day_7days "Rolling sum of hours over 12 in a day 7 window"
-bys employee_name (analysis_workdate): gen r_over12day_2days = _temp + _temp[_n-1] if _n>=7
-label variable r_over12day_2days "Rolling sum of hours over 12, 2 day"
-drop _temp
-
-* count of instances with 7 days worked in a week
-* Note: considered exposed if the final day of the streak is in the month/week
-bys employee_name (analysis_workdate): gen _temp = (tot_hours>0 & !inlist(tot_hours[_n-1], .,0)  & !inlist(tot_hours[_n-2], .,0) & !inlist(tot_hours[_n-3], .,0) & !inlist(tot_hours[_n-4], .,0) & !inlist(tot_hours[_n-5], .,0) & !inlist(tot_hours[_n-6], .,0) )
-assert _temp!=.
-bys employee_name an_week  (_temp analysis_workdate): gen exp_7days=_temp[_N]>0
-bys employee_name an_month  (_temp analysis_workdate): gen m_exp_7days=_temp[_N]>0
-label variable exp_7days "Worked 7 days straight this week?"
-label variable m_exp_7days "Worked 7 days straight this month?"
-drop _temp
-
-*** more rolling variables: (note not valid for first 7 obs)
-
-* hours worked over 40 in the last 7 days (including the day itself)
-bys employee_name (analysis_workdate): gen r_over40_7day = max(cum_tot_hours - cum_tot_hours[_n-6]-40+tot_hours[_n-6], 0) if _n>=7
-label variable r_over40_7day "Rolling sum of hours over 40 in 7 day window"
-* 2 days
-bys employee_name (analysis_workdate): gen r_over40_2day = max(cum_tot_hours - cum_tot_hours[_n-1]-40+tot_hours[_n-1], 0) if _n>=7
-label variable r_over40_2day "Rolling sum of hours over 40 in 2 day window"
-
-* hours worked over 60 in the last 7 days (including the day itself)
-bys employee_name (analysis_workdate): gen r_over60_7day = max(cum_tot_hours - cum_tot_hours[_n-6]-60+tot_hours[_n-6], 0) if _n>=7
-label variable r_over60_7day "Rolling sum of hours over 60 in 7 day window"
-* 2 days
-bys employee_name (analysis_workdate): gen r_over60_2day = max(cum_tot_hours - cum_tot_hours[_n-1]-60+tot_hours[_n-1], 0) if _n>=7
-label variable r_over60_2day "Rolling sum of hours over 60 in 2 day window"
-
-* days worked
-bys employee_name (analysis_workdate): gen r_workeddays_7day = tot_hours>0 + tot_hours[_n-1]>0 + tot_hours[_n-2]>0 + tot_hours[_n-3]>0 +tot_hours[_n-4]>0  +tot_hours[_n-5]>0+tot_hours[_n-6]>0 if _n>=7
-label variable r_workeddays_7day "Rolling sum of days worked in 7 day window"
-bys employee_name (analysis_workdate): gen r_workeddays_2day = tot_hours>0 + tot_hours[_n-1]>0 if _n>=7
-label variable r_workeddays_2day "Rolling sum of days worked in 2 day window"
-
-* add on hours worked for each lag
-forvalues x = 1(1)6 {
-	bys employee_name (analysis_workdate): gen tot_hours_lag`x' =tot_hours[_n-`x']
-}
 
 
 ** add on weather
@@ -364,6 +362,7 @@ drop _m
 drop date
 
 gen rain = prcp>0
+
 
 label variable is_holiday "HOLIDAY"
 label variable tmax "MAX. TEMP."

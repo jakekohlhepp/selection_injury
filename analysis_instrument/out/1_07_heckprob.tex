@@ -1,0 +1,29 @@
+{
+\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}
+\begin{tabular}{l*{2}{c}}
+\hline\hline
+                    &      Injury         &        Work         \\
+\hline
+Avg. Coworkers on Leave&     -0.0628\sym{***}&      0.0139\sym{**} \\
+                    &    (0.0123)         &   (0.00615)         \\
+[1em]
+Avg. Wage           &     -0.0569         &     -0.0950\sym{***}\\
+                    &    (0.0579)         &    (0.0181)         \\
+[1em]
+Wage                &      0.0735         &       0.102\sym{***}\\
+                    &    (0.0606)         &    (0.0157)         \\
+[1em]
+Seniority Rank      &     0.00171         &    0.000735         \\
+                    &   (0.00141)         &  (0.000765)         \\
+[1em]
+Coworkers on Leave  &                     &      0.0146\sym{***}\\
+                    &                     &   (0.00255)         \\
+\hline
+Observations        &       80223         &                     \\
+Rho                 &      -0.677         &                     \\
+Rho 95\% CI         &(-0.20, -0.894)         &                     \\
+\hline\hline
+\multicolumn{3}{l}{\footnotesize Standard errors in parentheses}\\
+\multicolumn{3}{l}{\footnotesize \sym{*} \(p<0.10\), \sym{**} \(p<0.05\), \sym{***} \(p<0.01\)}\\
+\end{tabular}
+}

@@ -12,7 +12,7 @@ use 20170803_payworkers_comp/data/anonymized_data_073117, clear
 isid v1
 * check that the following vars are constant within person:
 sort employee_name v1
-foreach var of varlist job_status totalnumberofinjuries original_hire_date civilian_entry_date  job_end_date {
+foreach var of varlist job_status totalnumberofinjuries original_hire_date civilian_entry_date  job_end_date job_class_title job_class jobclassdescription {
 	by employee_name : assert `var'==`var'[1]
 	di "`var' consistent within employee"
 }
@@ -20,14 +20,14 @@ foreach var of varlist job_status totalnumberofinjuries original_hire_date civil
 * they are constant. save out as time employee specific data.
 preserve
 bys employee_name (v1): keep if _n==1
-keep job_status totalnumberofinjuries original_hire_date civilian_entry_date  job_end_date employee_name 
+keep job_status totalnumberofinjuries original_hire_date civilian_entry_date  job_end_date employee_name job_class_title job_class jobclassdescription
 compress
 save data/employee_data, replace
 restore
 * note that last_update_date and by are also almost constant within person.
 
 keep employee_name timeofinj  - totalnumberofinjuries doi
-drop dayofweek yearsoldonworkdate yearsatjobonworkdate totalnumberofinjuries quarter 
+drop dayofweek yearsoldonworkdate yearsatjobonworkdate totalnumberofinjuries quarter jobclass jobclassdescription
 duplicates drop
 
 assert !missing(doi) if !missing(timeofinj)
@@ -47,7 +47,7 @@ use 20170803_payworkers_comp/data/anonymized_data_073117, clear
 * remove quotes from variation_desc
 gen cleaned_variation_desc= subinstr(variation_desc, `"""',"", .)
 sort employee_name work_date variation_desc v1
-drop timeofinj  - last_update_date yearsatjobonworkdate totalnumberofinjuries doi v1 raword
+drop timeofinj  - last_update_date yearsatjobonworkdate totalnumberofinjuries doi v1 raword job_class_title job_class jobclassdescription
 duplicates drop 
 
 * flag work pay codes based on description - use inputted data

@@ -1,0 +1,333 @@
+--------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /proj/kohlhepplab/projects/selection_injury/analysis_instrument/log
+> /01_01_mk_sample.log
+  log type:  text
+ opened on:  30 Jan 2025, 20:39:42
+
+. set more off
+
+. set scheme cleanplots
+
+. 
+. ** Purpose: Estimate additional quantities from the model.
+. use ../mkdata/data/01_05_working_with_leave, clear
+
+. encode employee_name, gen(empid)
+
+. gen year = year(analysis_workdate)
+
+. gen month = month(analysis_workdate)
+
+. gen dayofweek = dow(analysis_workdate)
+
+. gen week = week(analysis_workdate)
+
+. label define weekday 0 "Sunday" 1 "Monday" 2 "Tuesday" 3 "Wednesday" 4 "Thursd
+> ay" 5 "Friday" 6 "Saturday"
+
+. label values dayofweek weekday
+
+. isid employee_name analysis_workdate
+
+. 
+. gen grouped_div = main_div if main_div>=800
+
+. replace grouped_div = 999 if main_div<=800
+(0 real changes made)
+
+. egen grouped = group(grouped_div analysis_workdate)
+
+. gen isweekend = (dayofweek==0 | dayofweek==6)
+
+. *** Purpose: Sample restrictions for all analysis programs.
+. 
+. 
+. * assume that the data begins in earnest in january of 2015, and trails off in
+>  september of 2016.
+. unique employee_name
+Number of unique values of employee_name is  627
+Number of records is  426707
+
+. keep if analysis_workdate<d(01sep2016) & analysis_workdate>=d(01jan2015)
+(116,747 observations deleted)
+
+. unique employee_name
+Number of unique values of employee_name is  606
+Number of records is  309960
+
+. 
+. * remove part-time employees, defined as those who are ever traffic officer 1
+. bys employee_name : egen was_to_1 = max(job_class_title=="TRAF OFFICER I")
+
+. unique employee_name if was_to_1==1
+Number of unique values of employee_name is  97
+Number of records is  27032
+
+. 
+. * what is share of hours worked by these part-time employees.
+. egen _parhours = total(tot_hours*was_to_1)
+
+. egen _hours = total(tot_hours)
+
+. di _parhours/_hours[1]
+.0345248
+
+. 
+. drop if was_to_1==1
+(27,032 observations deleted)
+
+. drop was_to_1
+
+. 
+. * there are only one day gaps between obs.
+. bys employee_name (analysis_workdate ): assert analysis_workdate-analysis_work
+> date[_n-1]==1 if _n>1
+
+. 
+. * 7 people have injuries on non-work days. 
+. unique employee_name if matched_injury ==1 & tot_hours==0
+Number of unique values of employee_name is  9
+Number of records is  9
+
+. gen _tag = matched_injury ==1 & tot_hours==0
+
+. * 5 we associate these with the day before
+. bys employee_name (analysis_workdate): gen _daybefore=1 if tot_hours>0 & _tag[
+> _n+1]==1
+(282,924 missing values generated)
+
+. bys employee_name (analysis_workdate): gen _daybeforefix=1 if _daybefore[_n-1]
+> ==1
+(282,924 missing values generated)
+
+. count if _daybefore==1
+  4
+
+. assert r(N)==4
+
+. count if _daybeforefix==1
+  4
+
+. assert r(N)==4
+
+. replace matched_injury=1 if _daybefore==1
+(4 real changes made)
+
+. replace matched_injury = 0 if _daybeforefix==1
+(4 real changes made)
+
+. * fill in all variables
+. foreach var of varlist medpd natureofinj claimcause {
+  2.     bys empid (analysis_workdate): replace `var' = `var'[_n-1] if _daybefor
+> e==1
+  3. 
+. }
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+
+. 
+. * for 2 others, we assume injury occured immediately, which is why leave hours
+>  is not 0.
+. assert leave_hours>=8 if _tag==1 & _daybeforefix!=1
+
+. gen inj_immediately=_tag==1 & _daybeforefix!=1
+
+. gen work = inj_immediately==1 | tot_hours>0
+
+. label variable work "Either tot_hours>0 or inj_imm==1"
+
+. drop _daybefore _daybeforefix _tag
+
+. count if work==1 & tot_hours==0
+  5
+
+. assert r(N)==5
+
+. 
+. * make time based on numbers of days worked.
+. gen _workcounter = work
+
+. bys employee_name (analysis_workdate): gen days_worked_since20150101 = sum(_wo
+> rkcounter)
+
+. bys employee_name (analysis_workdate): egen tot_days_worked_fullperiod = sum(_
+> workcounter)
+
+. drop _workcounter
+
+. 
+. * exclude anyone that has no time worked in period - this is 9 people.
+. drop if tot_days_worked_fullperiod==0
+(349 observations deleted)
+
+. 
+. 
+. *** create some more instrument/helper variables
+. gen workflag = work==1 | leave_hours >0
+
+. bys employee_name (analysis_workdate): gen stints = workflag!=workflag[_n-1]
+
+. bys employee_name (analysis_workdate): replace stints = sum(stints)
+(282073 real changes made)
+
+. bys employee_name stints (analysis_workdate): gen stint_length = _N
+
+. bys employee_name: egen modelength = mode(stint_length ) if workflag ==1
+(76,403 missing values generated)
+
+. 
+. * need to control for seniority, time at company, age, hours during last 5 shi
+> fts
+. assert !missing(original_hire_date)
+
+. 
+. 
+. bys employee_name (yearsoldonworkdate analysis_workdate): gen an_age = yearsol
+> donworkdate[1] -(analysis_workdate[1]-d(01jan2015))/365.25
+
+. bys employee_name (yearsoldonworkdate analysis_workdate): replace an_age = an_
+> age + (analysis_workdate-d(01jan2015))/365.25
+(282123 real changes made)
+
+. assert !missing(an_age)
+
+. gen workhours_last6 = tot_hours_lag1 + tot_hours_lag2 + tot_hours_lag3 + tot_h
+> ours_lag4 + tot_hours_lag5 + tot_hours_lag6
+(300 missing values generated)
+
+. 
+. * age as of 20150101
+. bys employee_name (yearsoldonworkdate analysis_workdate): gen age_20150101 = y
+> earsoldonworkdate-(analysis_workdate-d(01jan2015))/365.25
+(76,010 missing values generated)
+
+. bys employee_name (age_20150101 analysis_workdate): replace age_20150101 = age
+> _20150101[1] if missing(age_20150101)
+(76010 real changes made)
+
+. assert !missing(age_20150101)
+
+. bys employee_name (age_20150101 analysis_workdate): assert round(age_20150101-
+> age_20150101[1],0.01)==0
+
+. bys employee_name (analysis_workdate): replace age_20150101 = age_20150101[1]
+(206063 real changes made)
+
+. label variable age_20150101 "Age"
+
+. label variable max_rate "Wage"
+
+. label variable an_age "Age"
+
+. label variable seniority_rank "Seniority Rank"
+
+. label variable pct_others_indiv_leave "Leave of Coworkers (%)"
+
+. label variable adj_div_leave_hours "Leave Hours of Coworkers"
+
+. 
+. * create value holding date of first observed injury
+. bys empid matched_injury (analysis_workdate): gen first_inj_date = analysis_wo
+> rkdate if matched_injury==1
+(282,343 missing values generated)
+
+. bys empid (first_inj_date analysis_workdate): replace first_inj_date = first_i
+> nj_date[1]
+(103437 real changes made)
+
+. 
+. * what was div day before
+. bys empid (analysis_workdate): gen div_before = main_div[_n-1]
+(506 missing values generated)
+
+. 
+. 
+. drop if work==0 & leave_hours>0
+(39,452 observations deleted)
+
+. 
+. 
+. 
+. label variable matched_injury "Injury"
+
+. label variable an_age "Age"
+
+. label variable is_holiday "Holiday"
+
+. label variable prcp "Amount Rain (in.)"
+
+. label variable tmax "Max. Daily Temp."
+
+. label variable pct_others_indiv_leave "Leave of Coworkers (%)"
+
+. label variable adj_div_leave_hours "Leave of Coworkers (hours)"
+
+. label variable adj_div_8_leave_count "Coworkers on Leave"
+
+. label variable max_rate "Wage"
+
+. label variable tenure "Tenure (years)"
+
+. label variable seniority_rank "Seniority Rank"
+
+. 
+. foreach var of varlist adj_div_8_leave_count max_rate {
+  2.     bys empid: egen bar_`var' = mean(`var')
+  3.     local label: variable label `var'
+  4.     label variable bar_`var' "Avg. `label'"
+  5. }
+
+. 
+. 
+. * drop all non-work days before first work day after injury.
+. gen lastinj = analysis_workdate if matched_injury==1
+(242,891 missing values generated)
+
+. bys empid (analysis_workdate): replace lastinj = lastinj[_n-1] if matched_inj=
+> =0
+(44297 real changes made)
+
+. bys empid lastinj work (analysis_workdate): gen firstworkday = analysis_workda
+> te if work==1 &_n==2
+(242,397 missing values generated)
+
+. bys empid lastinj (analysis_workdate): replace firstworkday = analysis_workdat
+> e[1] if lastinj==.
+(198594 real changes made)
+
+. bys empid lastinj (analysis_workdate): replace firstworkday = firstworkday[_n-
+> 1] if firstworkday==.
+(43507 real changes made)
+
+. replace firstworkday =0 if matched_injury==1
+(236 real changes made)
+
+. keep if analysis_workdate >=firstworkday
+(564 observations deleted)
+
+. 
+. * also exclude first day worked after injury.
+. drop if firstworkday == analysis_workdate
+(732 observations deleted)
+
+. 
+. * analysis has date dummies. only keep observations with variation within date
+> .
+. cap eststo clear
+
+. bys analysis_workdate (matched_injury): gen has_datevar = matched_injury[1]!=m
+> atched_injury[_N]
+
+. 
+. save data/01_01_estimation_sample, replace
+file data/01_01_estimation_sample.dta saved
+
+. log close
+      name:  <unnamed>
+       log:  /proj/kohlhepplab/projects/selection_injury/analysis_instrument/log
+> /01_01_mk_sample.log
+  log type:  text
+ closed on:  30 Jan 2025, 20:39:50
+--------------------------------------------------------------------------------

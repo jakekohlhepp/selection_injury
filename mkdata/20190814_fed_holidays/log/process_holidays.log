@@ -1,0 +1,40 @@
+---------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /nas/longleaf/home/kohlhepp/selection_injury/mkdata/20190814_fed_holidays/log/process_holidays.log
+  log type:  text
+ opened on:  10 Jan 2025, 11:45:13
+
+. set more off 
+
+. 
+. 
+. *** Process weather data for merge
+. * source: https://data.world/sudipta/us-federal-holidays-2011-2020
+. import delimited  using "data/us-federal-holidays-2011-2020.csv", clear varnames(1)
+(encoding automatically selected: ISO-8859-1)
+(2 vars, 100 obs)
+
+. rename date _date
+
+. gen date = date(_date, "MDY")
+
+. format date %td
+
+. drop _date
+
+. 
+. compress
+  variable date was double now int
+  (600 bytes saved)
+
+. save data/holidays, replace 
+(file data/holidays.dta not found)
+file data/holidays.dta saved
+
+. 
+. log close
+      name:  <unnamed>
+       log:  /nas/longleaf/home/kohlhepp/selection_injury/mkdata/20190814_fed_holidays/log/process_holidays.log
+  log type:  text
+ closed on:  10 Jan 2025, 11:45:13
+---------------------------------------------------------------------------------------------------------------

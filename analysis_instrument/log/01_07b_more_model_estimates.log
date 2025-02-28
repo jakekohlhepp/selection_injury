@@ -1,0 +1,94 @@
+-------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /proj/kohlhepplab/projects/selection_injury/analysis_instrument/log/01_07b_more_model_estimates.
+> log
+  log type:  text
+ opened on:  14 Jan 2025, 16:34:09
+
+. set more off
+
+. set scheme cleanplots
+
+. 
+. ** Purpose: Estimate additional quantities from the model.
+
+. use data/01_01_estimation_sample, clear
+
+. cap eststo clear
+
+. estimates use out/01_02_heckprob_results.ster
+
+. estimates esample: if sample_marked
+
+. keep if has_datevar==1
+(178,857 observations deleted)
+
+. estimates store est1
+
+. 
+. 
+. estimates restore est1
+(results est1 are active now)
+
+. * conditional injury rate
+
+. summ matched_injury if work==1
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+matched_in~y |     65,705    .0038962    .0622983          0          1
+
+. margins, predict(pcond) predict(pmargin) vce(unconditional)
+
+Predictive margins                                      Number of obs = 80,223
+
+1._predict: Pr(matched_injury=1|work=1), predict(pcond)
+2._predict: Pr(matched_injury=1), predict(pmargin)
+
+                                (Std. err. adjusted for 550 clusters in empid)
+------------------------------------------------------------------------------
+             |            Unconditional
+             |     Margin   std. err.      z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+    _predict |
+          1  |    .004184   .0003178    13.17   0.000     .0035611    .0048068
+          2  |   .0245408   .0178106     1.38   0.168    -.0103673     .059449
+------------------------------------------------------------------------------
+
+. 
+. * unconditional injury rate
+
+. margins, predict(pmargin) vce(unconditional)
+
+Predictive margins                                      Number of obs = 80,223
+
+Expression: Pr(matched_injury=1), predict(pmargin)
+
+                                (Std. err. adjusted for 550 clusters in empid)
+------------------------------------------------------------------------------
+             |            Unconditional
+             |     Margin   std. err.      z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+       _cons |   .0245408   .0178106     1.38   0.168    -.0103673     .059449
+------------------------------------------------------------------------------
+
+. margins if dayofweek>0 & dayofweek<5, predict(pmargin)
+
+Predictive margins                                      Number of obs = 58,254
+Model VCE: Robust
+
+Expression: Pr(matched_injury=1), predict(pmargin)
+
+------------------------------------------------------------------------------
+             |            Delta-method
+             |     Margin   std. err.      z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+       _cons |   .0130943   .0081524     1.61   0.108    -.0028842    .0290728
+------------------------------------------------------------------------------
+
+. summ matched_injury if dayofweek>0 & dayofweek<5
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+matched_in~y |     58,254    .0033817    .0580548          0          1
+

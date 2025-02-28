@@ -1,0 +1,252 @@
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /proj/kohlhepplab/projects/selection_injury/analysis_instrument/log/01_03_descriptives.log
+  log type:  text
+ opened on:  17 Jan 2025, 10:19:35
+
+. set more off
+
+. set scheme cleanplots
+
+. 
+. 
+. 
+. 
+. ********** descripitive statistics of estimation sample.
+
+. *** includes dates with no variation.
+
+. 
+. use data/01_01_estimation_sample, clear
+
+. gen real_week = an_week
+
+. bys empid (matched_injury analysis_workdate): gen ever_injured = matched_injury[_N]==1
+
+. label define injgroup -1 "All" 0 "Not Injured" 1 "Injured"
+
+. label values ever_injured injgroup
+
+. preserve
+
+. keep if dayofweek<6 & dayofweek>0
+(83,721 observations deleted)
+
+. twoway scatter  work adj_div_8_leave_count
+
+. collapse (mean) work,by(adj_div_8_leave_count)
+
+. twoway scatter  work adj_div_8_leave_count
+
+. restore
+
+. preserve
+
+. keep if inlist(dayofweek, 1,2,3,4)
+(118,917 observations deleted)
+
+. collapse (mean) work,by(adj_div_8_leave_count)
+
+. twoway scatter  work adj_div_8_leave_count
+
+. restore
+
+. preserve
+
+. collapse (mean) work,by(adj_div_8_leave_count grouped_div)
+
+. twoway scatter  work adj_div_8_leave_count
+
+. restore
+
+. preserve
+
+. collapse (mean) work,by(adj_div_8_leave_count grouped_div dayofweek)
+
+. twoway scatter  work adj_div_8_leave_count  if adj_div_8_leave_count <30 & dayofweek>0 & dayofweek<6,  ytitle("Work Probability") by(dayofweek, legen
+> d(off))
+
+. restore
+
+. preserve
+
+. lookfor leave
+
+Variable      Storage   Display    Value
+    name         type    format    label      Variable label
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+leave_hours     byte    %10.0g                (sum) leave_hours
+took_leave      byte    %10.0g                
+tot_leave       int     %10.0g                
+div_leave_count byte    %10.0g                
+pct_others_in~e double  %10.0g                Leave of Coworkers (%)
+adj_div_leave~t byte    %10.0g                
+alt_leave_nos~k byte    %10.0g                
+div_leave_8_c~t byte    %10.0g                
+adj_div_leave~s int     %10.0g                Leave of Coworkers (hours)
+adj_div_8_lea~t byte    %10.0g                Coworkers on Leave
+bar_adj_div_8~t double  %10.0g                Avg. Coworkers on Leave
+
+. drop if leave_hours>0
+(4,488 observations deleted)
+
+. collapse (mean) work,by(adj_div_8_leave_count)
+
+. twoway scatter  work adj_div_8_leave_count
+
+. restore
+
+. preserve
+
+. collapse (mean) work,by(adj_div_8_leave_count grouped_div dayofweek)
+
+. twoway scatter  work adj_div_8_leave_count  if adj_div_8_leave_count <30 & dayofweek>0 & dayofweek<6,  ytitle("Work Probability") by(dayofweek, legen
+> d(off))
+
+. cor work adj_div_8_leave_count
+(obs=978)
+
+             |     work adj_di~t
+-------------+------------------
+        work |   1.0000
+adj_div_8_~t |   0.2976   1.0000
+
+
+. cor work adj_div_8_leave_count if dayofweek==1
+(obs=173)
+
+             |     work adj_di~t
+-------------+------------------
+        work |   1.0000
+adj_div_8_~t |   0.1241   1.0000
+
+
+. cor work adj_div_8_leave_count if dayofweek==2
+(obs=163)
+
+             |     work adj_di~t
+-------------+------------------
+        work |   1.0000
+adj_div_8_~t |   0.1924   1.0000
+
+
+. cor work adj_div_8_leave_count if dayofweek==3
+(obs=173)
+
+             |     work adj_di~t
+-------------+------------------
+        work |   1.0000
+adj_div_8_~t |  -0.0350   1.0000
+
+
+. cor work adj_div_8_leave_count if dayofweek==4
+(obs=166)
+
+             |     work adj_di~t
+-------------+------------------
+        work |   1.0000
+adj_div_8_~t |   0.0426   1.0000
+
+
+. cor work adj_div_8_leave_count if dayofweek==5
+(obs=176)
+
+             |     work adj_di~t
+-------------+------------------
+        work |   1.0000
+adj_div_8_~t |   0.1713   1.0000
+
+
+. cor work adj_div_8_leave_count if dayofweek==6
+(obs=75)
+
+             |     work adj_di~t
+-------------+------------------
+        work |   1.0000
+adj_div_8_~t |  -0.2042   1.0000
+
+
+. cor work adj_div_8_leave_count if dayofweek==0
+(obs=52)
+
+             |     work adj_di~t
+-------------+------------------
+        work |   1.0000
+adj_div_8_~t |  -0.1702   1.0000
+
+
+. twoway scatter  work adj_div_8_leave_count  if   dayofweek==1,  ytitle("Work Probability")
+
+. twoway scatter  work adj_div_8_leave_count  if   dayofweek==10  ytitle("Work Probability")
+invalid 'ytitle' 
+r(198);
+
+. twoway scatter  work adj_div_8_leave_count  if   dayofweek==0  ytitle("Work Probability")
+invalid 'ytitle' 
+r(198);
+
+. twoway scatter  work adj_div_8_leave_count  if   dayofweek==0 , ytitle("Work Probability")
+
+. twoway scatter  work adj_div_8_leave_count  if   dayofweek==6 , ytitle("Work Probability")
+
+. twoway scatter  work adj_div_8_leave_count  if   dayofweek==2, ytitle("Work Probability")
+
+. ssc install binscatter
+checking binscatter consistency and verifying not already installed...
+installing into /nas/longleaf/home/kohlhepp/ado/plus/...
+installation complete.
+
+. help binscatter
+
+. binscatter work adj_div_8_leave_count
+warning: nquantiles(20) was specified, but only 16 were generated. see help file under nquantiles() for explanation.
+
+. restore
+
+. binscatter work adj_div_8_leave_count
+warning: nquantiles(20) was specified, but only 15 were generated. see help file under nquantiles() for explanation.
+
+. binscatter work adj_div_8_leave_count, by(dayofweek)
+(note:  named style i not found in class symbol, default attributes used)
+
+. binscatter work adj_div_8_leave_count if dayofweek!=0 & dayofweek!=6, by(dayofweek)
+
+. binscatter work adj_div_8_leave_count if dayofweek==0 | dayofweek==6 by(dayofweek)
+invalid 'by' 
+r(198);
+
+. binscatter work adj_div_8_leave_count if dayofweek==0 | dayofweek==6, by(dayofweek)
+
+. restorew
+command restorew is unrecognized
+r(199);
+
+. restore
+nothing to restore
+r(622);
+
+. clear all
+
+. ls
+
+total 351
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx 7720 Jan 17 10:35 01_01_mk_sample.do
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx  766 Jan 13 17:03 01_02_run_heckprob.do
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx 7838 Jan 17 10:23 01_03_descriptives.do
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx 3849 Jan 13 17:03 01_05_xtiv.do
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx 3034 Jan 13 17:03 01_07b_more_model_estimates.do
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx 2322 Jan 13 17:03 01_07c_heatmap.do
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx 8453 Jan 13 17:03 01_07_heckprob.do
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx 5675 Jan 13 17:03 01_08_valueinj.do
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx 5732 Jan 13 17:03 01_09_auctions.do
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx 3184 Jan 13 17:03 01_10_instrument_check.do
+-rw-r--r-- 1 kohlhepp rc_kohlhepplab_psx 5334 Jan 13 17:03 01_11_robustness.do
+drwxr-sr-x 2 kohlhepp rc_kohlhepplab_psx   45 Jan 16 16:42 data/
+drwxr-sr-x 2 kohlhepp rc_kohlhepplab_psx  202 Jan 17 10:19 log/
+drwxr-sr-x 2 kohlhepp rc_kohlhepplab_psx  386 Jan 16 16:55 out/
+
+. do 01_01_mk_sample.do
+
+. clear all
+
+. cap log close

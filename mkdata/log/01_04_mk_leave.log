@@ -1,0 +1,1203 @@
+--------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /proj/kohlhepplab/projects/selection_injury/mkdata/log/01_04_mk_lea
+> ve.log
+  log type:  text
+ opened on:  30 Jan 2025, 20:36:51
+
+. set more off 
+
+. 
+. 
+. //Purpose: Create data-set of leave-time by day by division. merge this on to 
+> the final working data-set 
+. * flag work leave codes based on description - use inputted data
+. insheet using out/list_var_desc.csv, clear comma
+(6 vars, 100 obs)
+
+. drop if missing(variation_desc)
+(0 observations deleted)
+
+. 
+. rename variation_desc cleaned_variation_desc
+
+. tempfile info
+
+. save `info'
+file /work/appscr/statawork/kohlhepp/St3476065.000001 saved as .dta format
+
+. 
+. ** find the main division worked and the typical payrate. use work paycodes.
+. use data/pay_data, clear
+
+. gen analysis_workdate=dofc(work_date)
+
+. format analysis_workdate %td
+
+. merge m:1 cleaned_variation_desc using `info'
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           450,764  (_merge==3)
+    -----------------------------------------
+
+. assert _m==3
+
+. drop _m 
+
+. 
+. gen leave_code = out_type==1
+
+. bys employee_name work_date (work): gen any_work=work[_N]==1
+
+. replace div =. if div <=808
+(85,175 real changes made, 85,175 to missing)
+
+. keep if variation_desc=="CURRENT ACTUAL HOURS WORKED ONLY"
+(218,608 observations deleted)
+
+. bys employee_name work_date (div): gen tag =div[1]!=div[_N]
+
+. tab employee_name if tag==1
+
+EMPLOYEE_NAM |
+           E |      Freq.     Percent        Cum.
+-------------+-----------------------------------
+EMPLOYEE 379 |         14       35.00       35.00
+EMPLOYEE 425 |         20       50.00       85.00
+EMPLOYEE 501 |          3        7.50       92.50
+EMPLOYEE 583 |          3        7.50      100.00
+-------------+-----------------------------------
+       Total |         40      100.00
+
+. * for these 4, code their div manually. it appears that it is clear which div 
+> each worked for primarily.
+. * 379 has 8 and 811. 8 appears to not be a div but some other admin code. code
+>  as 811
+. * 425 has 6 and 811. 6 appears to be admin code so code as 811
+. * emp 501 has correction. after correction only div 812 remains. code as 812
+. * emp 583 has correction. 819 appears correct afterwards.
+. replace div = 811 if employee_name=="EMPLOYEE 379" & tag==1
+(7 real changes made)
+
+. replace div = 811 if employee_name=="EMPLOYEE 425" & tag==1
+(10 real changes made)
+
+. replace div = 812 if employee_name=="EMPLOYEE 501" & tag==1
+(1 real change made)
+
+. replace div = 819 if employee_name=="EMPLOYEE 583" & tag==1
+(2 real changes made)
+
+. 
+. gen flag_div_corrected = inlist(employee_name, "EMPLOYEE 379", "EMPLOYEE 425",
+>  "EMPLOYEE 501", "EMPLOYEE 583") & tag==1
+
+. bys employee_name analysis_workdate (div): assert div==div[1]
+
+. drop if hours<0
+(894 observations deleted)
+
+. bys employee_name analysis_workdate (div): keep if _n==1
+(3,717 observations deleted)
+
+. keep employee_name analysis_workdate div  flag_div_corrected
+
+. gen main_div=div
+(40,434 missing values generated)
+
+. tempfile maindiv
+
+. save `maindiv'
+file /work/appscr/statawork/kohlhepp/St3476065.000002 saved as .dta format
+
+. 
+. ** save out dates with just bereavement
+. use data/pay_data, clear
+
+. gen analysis_workdate=dofc(work_date)
+
+. format analysis_workdate %td
+
+. gen bereavement = strpos(strlower(variation_desc), "bereave")>0
+
+. gen jury_duty = strpos(strlower(variation_desc), "jury duty")>0
+
+. keep if jury_duty==1 | bereavement==1
+(450,118 observations deleted)
+
+. keep jury_duty bereavement analysis_workdate employee_name
+
+. duplicates drop
+
+Duplicates in terms of all variables
+
+(16 observations deleted)
+
+. tempfile other
+
+. save `other'
+file /work/appscr/statawork/kohlhepp/St3476065.000003 saved as .dta format
+
+. 
+. * now add this to the working data. determine which div the employee mainly wo
+> rks
+. use data/working_expanded, clear
+
+. gen took_leave = leave_hours>0
+
+. 
+. * merge main div
+. merge 1:1 employee_name analysis_workdate using `maindiv'
+(variable analysis_workdate was int, now double to accommodate using data's
+       values)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       255,235
+        from master                   255,235  (_merge==1)
+        from using                          0  (_merge==2)
+
+    Matched                           227,545  (_merge==3)
+    -----------------------------------------
+
+. assert _m!=2
+
+. drop _m
+
+. 
+. * fill down the main_div
+. bys employee_name (analysis_workdate): replace main_div = main_div[_n-1] if ma
+> in_div==.
+(203222 real changes made)
+
+. 
+. * otherwise fill in with div1
+. replace main_div = div1 if div2==. & main_div==.
+(6,677 real changes made)
+
+. 
+. * then fill down again
+. bys employee_name (analysis_workdate): replace main_div = main_div[_n-1] if ma
+> in_div==.
+(14602 real changes made)
+
+. 
+. 
+. * fill back main_div and standard rate.
+. gsort employee_name -analysis_workdate
+
+. by employee_name: replace main_div = main_div[_n-1] if main_div==.
+(15366 real changes made)
+
+. 
+. * those missing division now never have a division
+. unique employee_name if missing(main_div)
+Number of unique values of employee_name is  98
+Number of records is  55802
+
+. unique employee_name 
+Number of unique values of employee_name is  726
+Number of records is  482780
+
+. drop if missing(main_div)
+(55,802 observations deleted)
+
+. unique employee_name
+Number of unique values of employee_name is  628
+Number of records is  426978
+
+. 
+. * construct leave/sick measures
+. * all are based on percentages of division
+. bys main_div analysis_workdate: gen div_emps = _N
+
+. bys main_div analysis_workdate: egen tot_working = total(tot_hours)
+
+. bys main_div analysis_workdate: egen tot_leave = total(leave_hours)
+
+. 
+. * leave.
+. gen _test=leave_hours>0
+
+. bys main_div analysis_workdate: egen div_leave_count=total(_test)
+
+. gen pct_others_indiv_leave = (div_leave_count - _test)/(div_emps-1)
+(3,399 missing values generated)
+
+. gen adj_div_leave_count = div_leave_count - _test
+
+. * when you are the only person in div on that day, assume 0%
+. replace pct_others_indiv_leave =  0 if div_emps==1
+(3,399 real changes made)
+
+. assert !missing(pct_others_indiv_leave)
+
+. assert pct_others_indiv_leave<=1
+
+. drop _test
+
+. 
+. * removing sick
+. gen _test=leave_hours-sick_hours>=8
+
+. bys main_div analysis_workdate: egen alt_leave_nosick = total(_test)
+
+. replace alt_leave_nosick =  alt_leave_nosick- _test 
+(37,454 real changes made)
+
+. drop _test
+
+. 
+. gen _test = leave_hours>=8
+
+. bys main_div analysis_workdate: egen div_leave_8_count = total(_test)
+
+. drop _test
+
+. 
+. * hours of leave among those who did not work at all
+. gen _test = leave_hours if tot_hours==0
+(234,095 missing values generated)
+
+. replace _test = 0 if tot_hours!=0
+(234,095 real changes made)
+
+. bys main_div analysis_workdate: egen adj_div_leave_hours = total(_test)
+
+. replace adj_div_leave_hours = adj_div_leave_hours - _test 
+(55,298 real changes made)
+
+. drop _test
+
+. 
+. 
+. * count of emps on leave who did not work at all and took more than 8 hours of
+>  leave
+. gen adj_leave = leave_hours>=8 & tot_hours==0
+
+. bys main_div analysis_workdate: egen tot_div_8_leave_count = total(adj_leave)
+
+. bys main_div analysis_workdate: egen adj_div_8_leave_count = total(adj_leave)
+
+. replace adj_div_8_leave_count = adj_div_8_leave_count - adj_leave 
+(54,437 real changes made)
+
+. 
+. 
+. * need to control for seniority, time at company, age, hours during last 5 shi
+> fts
+. assert !missing(original_hire_date)
+
+. gen tenure = (analysis_workdate - dofc(original_hire_date))/365.25
+
+. label variable tenure "Tenure (years)"
+
+. 
+. * for two emps, original hire date is after the work date.
+. * either these are non-work days or they occur before analysis window.
+. assert tot_hours==0 | analysis_workdate<=d(01jan2015) if tenure<0
+
+. drop if tenure<0
+(271 observations deleted)
+
+. 
+. merge 1:1 employee_name analysis_workdate using `other'
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       426,169
+        from master                   426,123  (_merge==1)
+        from using                         46  (_merge==2)
+
+    Matched                               584  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(46 observations deleted)
+
+. drop _m
+
+. replace bereavement = 0 if bereavement==.
+(426,123 real changes made)
+
+. replace jury_duty = 0 if jury_duty==.
+(426,123 real changes made)
+
+. 
+. 
+. * rank by seniority many different ways
+. bys analysis_workdate main_div (tenure employee_name): egen seniority_rank_ind
+> iv = rank(tenure), field
+
+. bys analysis_workdate (tenure employee_name): egen seniority_rank = rank(tenur
+> e), field
+
+. 
+. * get seniority rank in div from prior calendar week
+. gen lastday_lastweek = analysis_workdate-dow(analysis_workdate)-1
+
+. preserve
+
+. keep employee_name analysis_workdate seniority_rank_indiv
+
+. rename analysis_workdate lastday_lastweek 
+
+. rename seniority_rank_indiv lastweek_seniority_rank_indiv
+
+. tempfile hold
+
+. save `hold'
+file /work/appscr/statawork/kohlhepp/St3476065.000005 saved as .dta format
+
+. restore
+
+. merge m:1 employee_name lastday_lastweek  using `hold'
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       369,754
+        from master                     3,579  (_merge==1)
+        from using                    366,175  (_merge==2)
+
+    Matched                           423,128  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(366,175 observations deleted)
+
+. drop _m
+
+. 
+. * get seniority rank in entire org for prior month
+. gen lastday_lastmonth = firstdayofmonth(analysis_workdate)-1
+
+. preserve
+
+. keep employee_name analysis_workdate seniority_rank
+
+. rename analysis_workdate lastday_lastmonth 
+
+. rename seniority_rank lastmonth_seniority_rank
+
+. tempfile hold
+
+. save `hold'
+file /work/appscr/statawork/kohlhepp/St3476065.000007 saved as .dta format
+
+. restore
+
+. merge m:1 employee_name lastday_lastmonth  using `hold'
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       418,251
+        from master                     5,647  (_merge==1)
+        from using                    412,604  (_merge==2)
+
+    Matched                           421,060  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(412,604 observations deleted)
+
+. drop _m
+
+. 
+. 
+. preserve
+
+. keep if adj_leave==1
+(372,270 observations deleted)
+
+. keep seniority_rank_indiv main_div analysis_workdate
+
+. bys main_div analysis_workdate (seniority_rank_indiv): gen ord = _n
+
+. reshape wide  seniority_rank_indiv,i(main_div analysis_workdate) j(ord)
+(j = 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 
+> 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51)
+
+Data                               Long   ->   Wide
+-----------------------------------------------------------------------------
+Number of observations           54,437   ->   6,610       
+Number of variables                   4   ->   53          
+j variable (51 values)              ord   ->   (dropped)
+xij variables:
+                   seniority_rank_indiv   ->   seniority_rank_indiv1 seniority_r
+> ank_indiv2 ... seniority_rank_indiv51
+-----------------------------------------------------------------------------
+
+. tempfile bydiv
+
+. save `bydiv'
+file /work/appscr/statawork/kohlhepp/St3476065.000009 saved as .dta format
+
+. restore
+
+. merge m:1 main_div analysis_workdate using `bydiv'
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                        57,431
+        from master                    57,431  (_merge==1)
+        from using                          0  (_merge==2)
+
+    Matched                           369,276  (_merge==3)
+    -----------------------------------------
+
+. assert _m!=2
+
+. drop _m
+
+. capture confirm variable seniority_rank_indiv62
+
+. assert _rc!=0
+
+. 
+. * if rank of those out exceeds, increase my rank
+. 
+. gen leave_below = 0
+
+. 
+. foreach var of varlist seniority_rank_indiv* {
+  2.     replace leave_below = leave_below + (seniority_rank_indiv<`var')*(`var'
+> !=.)
+  3. }
+(0 real changes made)
+(36,692 real changes made)
+(47,559 real changes made)
+(52,381 real changes made)
+(57,565 real changes made)
+(62,817 real changes made)
+(69,399 real changes made)
+(76,614 real changes made)
+(82,596 real changes made)
+(88,436 real changes made)
+(93,987 real changes made)
+(97,688 real changes made)
+(100,808 real changes made)
+(102,619 real changes made)
+(97,761 real changes made)
+(92,066 real changes made)
+(87,773 real changes made)
+(83,197 real changes made)
+(76,484 real changes made)
+(68,806 real changes made)
+(63,052 real changes made)
+(57,538 real changes made)
+(50,000 real changes made)
+(42,172 real changes made)
+(36,194 real changes made)
+(30,369 real changes made)
+(22,880 real changes made)
+(17,496 real changes made)
+(11,881 real changes made)
+(8,254 real changes made)
+(6,189 real changes made)
+(3,677 real changes made)
+(2,549 real changes made)
+(1,871 real changes made)
+(774 real changes made)
+(508 real changes made)
+(430 real changes made)
+(349 real changes made)
+(366 real changes made)
+(279 real changes made)
+(284 real changes made)
+(289 real changes made)
+(302 real changes made)
+(316 real changes made)
+(316 real changes made)
+(239 real changes made)
+(244 real changes made)
+(83 real changes made)
+(83 real changes made)
+(83 real changes made)
+(93 real changes made)
+(93 real changes made)
+
+. 
+. 
+. gen leave_above = 0
+
+. 
+. foreach var of varlist seniority_rank_indiv* {
+  2.     replace leave_above = leave_above + (seniority_rank_indiv>`var')*(`var'
+> !=.)
+  3. }
+(0 real changes made)
+(323,571 real changes made)
+(274,404 real changes made)
+(241,444 real changes made)
+(216,001 real changes made)
+(195,752 real changes made)
+(176,573 real changes made)
+(159,119 real changes made)
+(143,650 real changes made)
+(129,624 real changes made)
+(116,497 real changes made)
+(104,313 real changes made)
+(92,450 real changes made)
+(81,515 real changes made)
+(71,213 real changes made)
+(61,543 real changes made)
+(53,331 real changes made)
+(45,410 real changes made)
+(38,647 real changes made)
+(31,861 real changes made)
+(26,460 real changes made)
+(22,069 real changes made)
+(17,954 real changes made)
+(14,441 real changes made)
+(11,339 real changes made)
+(8,865 real changes made)
+(6,555 real changes made)
+(4,668 real changes made)
+(2,997 real changes made)
+(1,980 real changes made)
+(1,409 real changes made)
+(926 real changes made)
+(679 real changes made)
+(493 real changes made)
+(250 real changes made)
+(195 real changes made)
+(164 real changes made)
+(125 real changes made)
+(106 real changes made)
+(90 real changes made)
+(88 real changes made)
+(77 real changes made)
+(69 real changes made)
+(57 real changes made)
+(57 real changes made)
+(50 real changes made)
+(43 real changes made)
+(11 real changes made)
+(11 real changes made)
+(11 real changes made)
+(9 real changes made)
+(9 real changes made)
+
+. 
+. preserve
+
+. keep if adj_leave==1
+(372,270 observations deleted)
+
+. bys analysis_workdate (employee_name): gen ord = _n
+
+. keep lastmonth_seniority_rank analysis_workdate ord
+
+. reshape wide  lastmonth_seniority_rank,i(analysis_workdate) j(ord)
+(j = 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 
+> 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 
+> 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 
+> 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 1
+> 05 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124
+>  125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 1
+> 44 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161 162 163
+>  164 165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180 181 182 1
+> 83 184 185 186 187 188 189 190 191 192 193 194 195 196 197 198 199 200 201 202
+>  203 204 205 206 207 208 209 210 211 212 213 214 215 216 217 218 219 220 221 2
+> 22 223 224 225 226 227 228 229 230 231 232)
+
+Data                               Long   ->   Wide
+-----------------------------------------------------------------------------
+Number of observations           54,437   ->   985         
+Number of variables                   3   ->   233         
+j variable (232 values)             ord   ->   (dropped)
+xij variables:
+               lastmonth_seniority_rank   ->   lastmonth_seniority_rank1 lastmon
+> th_seniority_rank2 ... lastmonth_seniority_rank232
+-----------------------------------------------------------------------------
+
+. tempfile byorg
+
+. save `byorg'
+file /work/appscr/statawork/kohlhepp/St3476065.00000b saved as .dta format
+
+. restore
+
+. merge m:1 analysis_workdate using `byorg'
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                         7,249
+        from master                     7,249  (_merge==1)
+        from using                          0  (_merge==2)
+
+    Matched                           419,458  (_merge==3)
+    -----------------------------------------
+
+. assert _m!=2
+
+. drop _m
+
+. 
+. 
+. capture confirm variable lastmonth_seniority_rank277
+
+. assert _rc!=0
+
+. 
+. gen leave_below_lastmonth_org = 0
+
+. 
+. foreach var of varlist lastmonth_seniority_rank* {
+  2.     replace leave_below_lastmonth_org = leave_below_lastmonth_org + (lastmo
+> nth_seniority_rank<`var')*(`var'!=.)
+  3. }
+(0 real changes made)
+(62,767 real changes made)
+(74,074 real changes made)
+(85,094 real changes made)
+(88,980 real changes made)
+(92,686 real changes made)
+(91,539 real changes made)
+(86,643 real changes made)
+(85,048 real changes made)
+(81,393 real changes made)
+(79,137 real changes made)
+(75,311 real changes made)
+(73,474 real changes made)
+(66,858 real changes made)
+(63,404 real changes made)
+(61,555 real changes made)
+(59,672 real changes made)
+(54,994 real changes made)
+(54,597 real changes made)
+(52,914 real changes made)
+(51,173 real changes made)
+(56,475 real changes made)
+(56,458 real changes made)
+(60,632 real changes made)
+(60,411 real changes made)
+(67,179 real changes made)
+(68,045 real changes made)
+(71,035 real changes made)
+(73,132 real changes made)
+(77,956 real changes made)
+(83,172 real changes made)
+(85,950 real changes made)
+(86,258 real changes made)
+(96,151 real changes made)
+(96,361 real changes made)
+(101,975 real changes made)
+(105,655 real changes made)
+(107,840 real changes made)
+(107,773 real changes made)
+(110,167 real changes made)
+(112,979 real changes made)
+(119,197 real changes made)
+(119,138 real changes made)
+(127,060 real changes made)
+(128,260 real changes made)
+(131,135 real changes made)
+(135,643 real changes made)
+(136,814 real changes made)
+(136,149 real changes made)
+(139,418 real changes made)
+(139,876 real changes made)
+(147,286 real changes made)
+(150,815 real changes made)
+(150,177 real changes made)
+(153,934 real changes made)
+(154,204 real changes made)
+(156,833 real changes made)
+(162,097 real changes made)
+(161,322 real changes made)
+(161,533 real changes made)
+(166,288 real changes made)
+(164,327 real changes made)
+(168,499 real changes made)
+(164,829 real changes made)
+(169,985 real changes made)
+(170,975 real changes made)
+(171,988 real changes made)
+(170,012 real changes made)
+(170,881 real changes made)
+(162,528 real changes made)
+(162,554 real changes made)
+(163,659 real changes made)
+(162,649 real changes made)
+(157,905 real changes made)
+(151,777 real changes made)
+(152,275 real changes made)
+(148,730 real changes made)
+(145,239 real changes made)
+(141,390 real changes made)
+(138,506 real changes made)
+(130,102 real changes made)
+(126,400 real changes made)
+(121,435 real changes made)
+(116,197 real changes made)
+(114,224 real changes made)
+(110,405 real changes made)
+(101,905 real changes made)
+(97,639 real changes made)
+(93,373 real changes made)
+(84,427 real changes made)
+(81,978 real changes made)
+(72,451 real changes made)
+(68,142 real changes made)
+(64,275 real changes made)
+(59,069 real changes made)
+(53,320 real changes made)
+(45,209 real changes made)
+(43,237 real changes made)
+(35,959 real changes made)
+(34,977 real changes made)
+(27,257 real changes made)
+(25,668 real changes made)
+(22,152 real changes made)
+(18,364 real changes made)
+(18,537 real changes made)
+(14,984 real changes made)
+(12,548 real changes made)
+(10,065 real changes made)
+(9,060 real changes made)
+(6,969 real changes made)
+(6,547 real changes made)
+(4,434 real changes made)
+(4,822 real changes made)
+(3,572 real changes made)
+(3,729 real changes made)
+(1,984 real changes made)
+(2,699 real changes made)
+(2,762 real changes made)
+(2,377 real changes made)
+(1,931 real changes made)
+(1,384 real changes made)
+(1,200 real changes made)
+(783 real changes made)
+(785 real changes made)
+(281 real changes made)
+(493 real changes made)
+(507 real changes made)
+(519 real changes made)
+(407 real changes made)
+(346 real changes made)
+(409 real changes made)
+(452 real changes made)
+(375 real changes made)
+(296 real changes made)
+(305 real changes made)
+(305 real changes made)
+(313 real changes made)
+(313 real changes made)
+(313 real changes made)
+(313 real changes made)
+(313 real changes made)
+(313 real changes made)
+(313 real changes made)
+(313 real changes made)
+(313 real changes made)
+(324 real changes made)
+(326 real changes made)
+(327 real changes made)
+(101 real changes made)
+(328 real changes made)
+(328 real changes made)
+(328 real changes made)
+(328 real changes made)
+(328 real changes made)
+(328 real changes made)
+(328 real changes made)
+(328 real changes made)
+(328 real changes made)
+(342 real changes made)
+(342 real changes made)
+(342 real changes made)
+(342 real changes made)
+(342 real changes made)
+(342 real changes made)
+(342 real changes made)
+(342 real changes made)
+(359 real changes made)
+(359 real changes made)
+(359 real changes made)
+(359 real changes made)
+(359 real changes made)
+(359 real changes made)
+(359 real changes made)
+(359 real changes made)
+(47 real changes made)
+(359 real changes made)
+(359 real changes made)
+(13 real changes made)
+(381 real changes made)
+(381 real changes made)
+(381 real changes made)
+(381 real changes made)
+(381 real changes made)
+(76 real changes made)
+(381 real changes made)
+(381 real changes made)
+(381 real changes made)
+(400 real changes made)
+(31 real changes made)
+(401 real changes made)
+(401 real changes made)
+(401 real changes made)
+(401 real changes made)
+(401 real changes made)
+(401 real changes made)
+(401 real changes made)
+(401 real changes made)
+(401 real changes made)
+(401 real changes made)
+(425 real changes made)
+(425 real changes made)
+(425 real changes made)
+(425 real changes made)
+(76 real changes made)
+(425 real changes made)
+(59 real changes made)
+(425 real changes made)
+(425 real changes made)
+(425 real changes made)
+(425 real changes made)
+(425 real changes made)
+(450 real changes made)
+(450 real changes made)
+(450 real changes made)
+(117 real changes made)
+(27 real changes made)
+(192 real changes made)
+(181 real changes made)
+(163 real changes made)
+(125 real changes made)
+(163 real changes made)
+(199 real changes made)
+(137 real changes made)
+(105 real changes made)
+(132 real changes made)
+(181 real changes made)
+(137 real changes made)
+(117 real changes made)
+(192 real changes made)
+(58 real changes made)
+(101 real changes made)
+(6 real changes made)
+(157 real changes made)
+
+. 
+. 
+. gen leave_above_lastmonth_org = 0
+
+. 
+. foreach var of varlist lastmonth_seniority_rank* {
+  2.     replace leave_above_lastmonth_org = leave_above_lastmonth_org + (lastmo
+> nth_seniority_rank>`var')*(`var'!=.)
+  3. }
+(0 real changes made)
+(349,410 real changes made)
+(332,634 real changes made)
+(314,895 real changes made)
+(301,075 real changes made)
+(286,854 real changes made)
+(279,796 real changes made)
+(274,243 real changes made)
+(268,503 real changes made)
+(266,108 real changes made)
+(259,810 real changes made)
+(258,463 real changes made)
+(252,272 real changes made)
+(251,243 real changes made)
+(251,267 real changes made)
+(244,641 real changes made)
+(244,574 real changes made)
+(244,863 real changes made)
+(241,483 real changes made)
+(240,778 real changes made)
+(242,595 real changes made)
+(235,541 real changes made)
+(234,658 real changes made)
+(231,729 real changes made)
+(231,114 real changes made)
+(223,146 real changes made)
+(222,254 real changes made)
+(218,385 real changes made)
+(215,115 real changes made)
+(208,120 real changes made)
+(203,593 real changes made)
+(199,361 real changes made)
+(197,601 real changes made)
+(187,792 real changes made)
+(188,494 real changes made)
+(183,137 real changes made)
+(177,820 real changes made)
+(174,950 real changes made)
+(174,879 real changes made)
+(171,682 real changes made)
+(168,138 real changes made)
+(161,285 real changes made)
+(161,835 real changes made)
+(153,226 real changes made)
+(152,430 real changes made)
+(147,667 real changes made)
+(143,018 real changes made)
+(142,391 real changes made)
+(142,161 real changes made)
+(138,676 real changes made)
+(137,377 real changes made)
+(129,055 real changes made)
+(125,360 real changes made)
+(126,157 real changes made)
+(121,997 real changes made)
+(122,183 real changes made)
+(119,526 real changes made)
+(113,647 real changes made)
+(113,374 real changes made)
+(112,657 real changes made)
+(106,204 real changes made)
+(108,171 real changes made)
+(102,421 real changes made)
+(105,636 real changes made)
+(101,120 real changes made)
+(98,188 real changes made)
+(96,388 real changes made)
+(97,729 real changes made)
+(94,202 real changes made)
+(100,302 real changes made)
+(96,682 real changes made)
+(92,462 real changes made)
+(91,837 real changes made)
+(92,257 real changes made)
+(96,235 real changes made)
+(88,214 real changes made)
+(89,144 real changes made)
+(86,325 real changes made)
+(86,895 real changes made)
+(82,701 real changes made)
+(85,516 real changes made)
+(87,518 real changes made)
+(88,603 real changes made)
+(90,142 real changes made)
+(84,107 real changes made)
+(79,840 real changes made)
+(85,194 real changes made)
+(85,150 real changes made)
+(84,549 real changes made)
+(86,211 real changes made)
+(79,630 real changes made)
+(78,946 real changes made)
+(77,190 real changes made)
+(71,620 real changes made)
+(69,964 real changes made)
+(67,294 real changes made)
+(70,538 real changes made)
+(63,043 real changes made)
+(63,489 real changes made)
+(57,304 real changes made)
+(57,032 real changes made)
+(48,446 real changes made)
+(47,540 real changes made)
+(45,818 real changes made)
+(38,952 real changes made)
+(38,096 real changes made)
+(35,423 real changes made)
+(27,722 real changes made)
+(24,184 real changes made)
+(22,133 real changes made)
+(16,977 real changes made)
+(15,529 real changes made)
+(13,588 real changes made)
+(13,302 real changes made)
+(11,145 real changes made)
+(10,864 real changes made)
+(9,608 real changes made)
+(8,570 real changes made)
+(6,914 real changes made)
+(6,354 real changes made)
+(3,798 real changes made)
+(3,962 real changes made)
+(2,833 real changes made)
+(2,273 real changes made)
+(1,776 real changes made)
+(1,551 real changes made)
+(1,025 real changes made)
+(1,013 real changes made)
+(588 real changes made)
+(655 real changes made)
+(600 real changes made)
+(554 real changes made)
+(628 real changes made)
+(720 real changes made)
+(192 real changes made)
+(192 real changes made)
+(181 real changes made)
+(181 real changes made)
+(181 real changes made)
+(181 real changes made)
+(181 real changes made)
+(181 real changes made)
+(181 real changes made)
+(181 real changes made)
+(181 real changes made)
+(180 real changes made)
+(178 real changes made)
+(177 real changes made)
+(401 real changes made)
+(163 real changes made)
+(163 real changes made)
+(163 real changes made)
+(163 real changes made)
+(163 real changes made)
+(163 real changes made)
+(163 real changes made)
+(163 real changes made)
+(163 real changes made)
+(147 real changes made)
+(147 real changes made)
+(147 real changes made)
+(147 real changes made)
+(147 real changes made)
+(147 real changes made)
+(147 real changes made)
+(147 real changes made)
+(124 real changes made)
+(124 real changes made)
+(124 real changes made)
+(124 real changes made)
+(124 real changes made)
+(124 real changes made)
+(124 real changes made)
+(124 real changes made)
+(447 real changes made)
+(124 real changes made)
+(124 real changes made)
+(491 real changes made)
+(105 real changes made)
+(105 real changes made)
+(105 real changes made)
+(105 real changes made)
+(105 real changes made)
+(421 real changes made)
+(105 real changes made)
+(105 real changes made)
+(105 real changes made)
+(104 real changes made)
+(470 real changes made)
+(82 real changes made)
+(82 real changes made)
+(82 real changes made)
+(82 real changes made)
+(82 real changes made)
+(82 real changes made)
+(82 real changes made)
+(82 real changes made)
+(82 real changes made)
+(82 real changes made)
+(55 real changes made)
+(55 real changes made)
+(55 real changes made)
+(55 real changes made)
+(421 real changes made)
+(55 real changes made)
+(439 real changes made)
+(55 real changes made)
+(55 real changes made)
+(55 real changes made)
+(55 real changes made)
+(55 real changes made)
+(43 real changes made)
+(43 real changes made)
+(43 real changes made)
+(381 real changes made)
+(474 real changes made)
+(306 real changes made)
+(316 real changes made)
+(332 real changes made)
+(373 real changes made)
+(332 real changes made)
+(302 real changes made)
+(361 real changes made)
+(388 real changes made)
+(370 real changes made)
+(316 real changes made)
+(361 real changes made)
+(381 real changes made)
+(306 real changes made)
+(446 real changes made)
+(401 real changes made)
+(498 real changes made)
+(345 real changes made)
+
+. 
+. rename lastmonth_seniority_rank sen_rank_lastmonth_org
+
+. rename seniority_rank_indiv sen_rank_today_div
+
+. 
+. drop seniority_rank_indiv* lastmonth_seniority_rank*
+
+. 
+. preserve
+
+. keep if !missing(job_class_title)
+(135,902 observations deleted)
+
+. bys employee_name (analysis_workdate): assert job_class_title==job_class_title
+> [1]
+
+. keep employee_name job_class_title
+
+. duplicates drop
+
+Duplicates in terms of all variables
+
+(290,178 observations deleted)
+
+. tempfile title
+
+. save `title'
+file /work/appscr/statawork/kohlhepp/St3476065.00000d saved as .dta format
+
+. restore
+
+. 
+. compress
+  variable roll_7days_varot_hours was int now byte
+  variable analysis_workdate was double now int
+  variable took_leave was double now byte
+  variable div was double now int
+  variable flag_div_corrected was double now byte
+  variable main_div was double now int
+  variable div_emps was double now int
+  variable tot_working was double now int
+  variable tot_leave was double now int
+  variable div_leave_count was double now byte
+  variable adj_div_leave_count was double now byte
+  variable alt_leave_nosick was double now byte
+  variable div_leave_8_count was double now byte
+  variable adj_div_leave_hours was double now int
+  variable adj_leave was double now byte
+  variable tot_div_8_leave_count was double now byte
+  variable adj_div_8_leave_count was double now byte
+  variable bereavement was double now byte
+  variable jury_duty was double now byte
+  variable sen_rank_today_div was double now int
+  variable seniority_rank was double now int
+  variable lastday_lastweek was double now int
+  variable lastweek_seniority_rank_indiv was double now int
+  variable lastday_lastmonth was double now int
+  variable sen_rank_lastmonth_org was double now int
+  variable leave_below was double now byte
+  variable leave_above was double now byte
+  variable leave_below_lastmonth_org was double now int
+  variable leave_above_lastmonth_org was double now int
+  (77,660,674 bytes saved)
+
+. save data/01_05_working_with_leave, replace
+file data/01_05_working_with_leave.dta saved
+
+. log close
+      name:  <unnamed>
+       log:  /proj/kohlhepplab/projects/selection_injury/mkdata/log/01_04_mk_lea
+> ve.log
+  log type:  text
+ closed on:  30 Jan 2025, 20:37:42
+--------------------------------------------------------------------------------

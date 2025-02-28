@@ -1,0 +1,209 @@
+### visualize the network of officers
+library('data.table')
+library('lubridate')
+library('kableExtra')
+library('igraph')
+library('qgraph')
+library('ggplot2')
+data<-fread('mkdata/data/01_03_pre_network.csv')
+
+data[, analysis_workdate:=dmy(analysis_workdate)]
+
+### for each employee with an exposure variable, zero this variable for all dates after their termination
+
+data[, num_emp1:=as.integer(gsub("EMPLOYEE ", "",employee_name))]
+
+## total number of people with ot on each day
+data[, ot_work:= varot_hours>0, by="analysis_workdate"]
+
+data[, tot_ot:= sum(ot_work), by="analysis_workdate"]
+
+melt_data<-melt(data, id.vars=c("num_emp1", "analysis_workdate"),
+                measure.vars=colnames(data)[grep("exposure",colnames(data))])
+melt_data[, num_emp2:=as.integer(gsub("exposure", "",variable))]
+all_pairs<-data[,do.call(CJ, list(num_emp1, num_emp1) ),by=c("analysis_workdate")]
+setnames(all_pairs, old=c("V1", "V2"), new=c("num_emp1", "num_emp2"))
+
+all_pairs<-merge(all_pairs,melt_data, all.x=TRUE, by=c("num_emp1", "num_emp2","analysis_workdate") )
+all_pairs[is.na(value), value:=0]
+## zero self-links
+all_pairs[num_emp1==num_emp2, value:=0]
+setkey(all_pairs,"analysis_workdate","num_emp1", "num_emp2")
+
+all_pairs<-dcast(all_pairs, analysis_workdate+num_emp1~num_emp2, value.var ="value")
+all_pairs<-merge(all_pairs, data[,c("num_emp1","analysis_workdate", "tot_hours", "leave_hours","matched_injury", "tot_ot","ot_work")], by=c("num_emp1","analysis_workdate"), all.x=TRUE)
+
+
+
+### for each date starting 01jan2015 compute centrality
+
+makeit<-function(x){
+  cols_keep<-as.character(x$num_emp1)
+  qgraph_mat<-as.matrix(x[,.SD, .SDcols= cols_keep ])
+  rownames(qgraph_mat)<-as.character(x$num_emp1)
+  colnames(qgraph_mat)<-colnames(x[,.SD, .SDcols= cols_keep ])
+  stopifnot(ncol(qgraph_mat)==nrow(qgraph_mat))
+  igraph_mat<-graph_from_adjacency_matrix(qgraph_mat, mode="undirected", weighted=TRUE)
+  eigen_centrality(largest_component(igraph_mat))->temp
+  res<-temp$vector[as.character(x$num_emp1)]
+  res[is.na(res)]<-0
+  return(res)
+}
+
+
+
+makeit_degree<-function(x){
+  cols_keep<-as.character(x$num_emp1)
+  qgraph_mat<-as.matrix(x[,.SD, .SDcols= cols_keep ])
+  rownames(qgraph_mat)<-as.character(x$num_emp1)
+  colnames(qgraph_mat)<-colnames(x[,.SD, .SDcols= cols_keep ])
+  stopifnot(ncol(qgraph_mat)==nrow(qgraph_mat))
+  qgraph_obj<-qgraph(qgraph_mat,DoNotPlot=TRUE)
+  qgraph_obj<-centrality(qgraph_obj)
+  return(qgraph_obj$InDegree)
+}
+
+
+all_pairs[, day:=weekdays(analysis_workdate)]
+all_pairs[, dw:=as.factor(weekdays(analysis_workdate))]
+
+all_pairs[, eigen_cent:=makeit(.SD),.SDcols=c(colnames(all_pairs)[grep("^[0-9]+$",colnames(all_pairs))],"num_emp1"), by="analysis_workdate"]
+all_pairs[, degree:=makeit_degree(.SD),.SDcols=c(colnames(all_pairs)[grep("^[0-9]+$",colnames(all_pairs))],"num_emp1"), by="analysis_workdate"]
+
+all_pairs[,work:=tot_hours>0]
+
+setkey(all_pairs, "num_emp1", "analysis_workdate")
+all_pairs[,l_eigen_cent:=shift(eigen_cent), by="num_emp1"]
+all_pairs[,l_degree:=shift(degree), by="num_emp1"]
+
+
+## compute total number of people with ot hours on date
+
+
+
+### special events
+library('stringr')
+special<-fread('mkdata/20250207_bss_special_events/Building_and_Safety_Temporary_Special_Event__TSE__Permits_20250207.csv')
+## process start and end date and expand
+special[, analysis_workdate:=mdy(`Event Start Date`)]
+#special[, end_date:=mdy(`Event End Date`)]
+#special<-special[, .(analysis_workdate=start_date:end_date), by=eval(colnames(special))]
+#special<-special[`Permit Sub-Type`=="Public Way"]
+special<-special[, .(events=uniqueN(`PCIS Permit #`)), by="analysis_workdate"]
+all_pairs<-merge(all_pairs,special, by="analysis_workdate", all.x=TRUE )
+all_pairs[is.na(events), events:=0]
+all_pairs[, bartik:=tot_ot*l_degree]
+all_pairs[,s_bartik:=bartik/sd(bartik, na.rm=TRUE)]
+all_pairs[,s_work:=work/sd(work, na.rm=TRUE)]
+
+summary(feols(data=all_pairs[(leave_hours==0 | tot_hours>0) & analysis_workdate>=as.Date('2015-01-01') & analysis_workdate<=as.Date('2015-06-01'),], ot_work~s_bartik|analysis_workdate+num_emp1))
+
+binsreg::binsreg(ot_work,bartik,w=~as.factor(num_emp1), data=all_pairs[(leave_hours==0 | tot_hours>0) & analysis_workdate>=as.Date('2015-01-01') & analysis_workdate<=as.Date('2015-06-01'),])
+
+
+---
+summary(feols(data=all_pairs[(leave_hours==0 | tot_hours>0) & analysis_workdate>=as.Date('2015-01-01'),], work~l_eigen_cent|analysis_workdate))
+
+binsreg::binsreg(work,l_eigen_cent, data=all_pairs[(leave_hours==0 | tot_hours>0) & analysis_workdate>=as.Date('2015-01-01'),])
+
+binsreg::binsreg(work,l_degree, data=all_pairs[(leave_hours==0 | tot_hours>0) & analysis_workdate>=as.Date('2015-01-01'),], w=~as.factor(analysis_workdate))
+
+ggplot(data=all_pairs[(leave_hours==0 | tot_hours>0) & analysis_workdate%in% c(as.Date('2015-07-12'),as.Date('2015-03-26'),as.Date('2015-09-18'),as.Date('2015-08-21'),as.Date('2015-02-08'))],aes(x=eigen_cent, y=work))+
+  geom_point()+theme_bw()
+
+
+binsreg::binsreg(work,l_eigen_cent, data=all_pairs[(leave_hours==0 | tot_hours>0) & analysis_workdate%in% c(as.Date('2015-07-12'),as.Date('2015-03-26'),as.Date('2015-09-18'),as.Date('2015-08-21'),as.Date('2015-02-08'))]
+)
+
+binsreg::binsreg(work,bartik, data=all_pairs[(leave_hours==0 | tot_hours>0) & analysis_workdate%in% c(as.Date('2015-07-12'),as.Date('2015-03-26'),as.Date('2015-09-18'),as.Date('2015-08-21'),as.Date('2015-02-08'))]
+)
+
+
+ggplot(data=all_pairs[(leave_hours==0 | tot_hours>0) & analysis_workdate>=as.Date('2015-01-01'),],aes(x=eigen_cent, y=work))+
+  stat_summary_bin(fun.y='mean', bins=8,
+                   color='orange', size=1, geom='point')+theme_bw()
+
+
+
+
+---- old cold for snapshot
+snapshot<-as.Date("2015-06-30")
+present<-data[analysis_workdate==snapshot,]$employee_name
+data[, num_emp1:=as.integer(gsub("EMPLOYEE ", "",employee_name))]
+work_month<-data[analysis_workdate>=1+snapshot & analysis_workdate<=snapshot+365,.(frac_work=sum(tot_hours>0 & leave_hours==0)/sum(leave_hours==0), injury=max(matched_injury)), by="num_emp1" ]
+
+
+melt_data<-melt(data[analysis_workdate==snapshot & employee_name %in% present,], id.vars=c("num_emp1"),
+                measure.vars=colnames(data)[grep("exposure",colnames(data))])
+melt_data<-melt_data[!is.na(value)]
+melt_data[, num_emp2:=as.integer(gsub("exposure", "",variable))]
+all_people<-data.table(expand.grid(unique(melt_data$num_emp1),unique(melt_data$num_emp1)))
+setnames(all_people, old=c("Var1", "Var2"), new=c("num_emp1", "num_emp2"))
+all_people<-merge(all_people,melt_data, all.x=TRUE, by=c("num_emp1", "num_emp2") )
+all_people[is.na(value), value:=0]
+## zero self-links
+all_people[num_emp1==num_emp2, value:=0]
+setkey(all_people,"num_emp1", "num_emp2")
+
+## threshold of 1.186
+#all_people[,value:=value>quantile(all_people[num_emp1!=num_emp2]$value, seq(from=0.1, to=0.99, by=0.01))["95%"]]
+all_people<-dcast(all_people, num_emp1~num_emp2, value.var ="value")
+all_people<-merge(all_people, work_month, by="num_emp1", all.x=TRUE)
+### plot
+qgraph_mat<-as.matrix(all_people[,.SD, .SDcols= !c("num_emp1", "frac_work","injury")  ])
+rownames(qgraph_mat)<-all_people$num_emp1
+colnames(qgraph_mat)<-colnames(all_people[,.SD, .SDcols= !c("num_emp1", "frac_work","injury")  ])
+stopifnot(ncol(qgraph_mat)==nrow(qgraph_mat))
+
+## get colors
+igraph_mat<-graph_from_adjacency_matrix(qgraph_mat, mode="undirected", weighted=TRUE)
+#lay_try<-layout_with_kk(igraph_mat, kkconst=1000)
+lay_try<-layout_with_graphopt(igraph_mat, mass=1000, charge=0.02, spring.length = 5, spring=5)
+eigen_centrality(largest_component(igraph_mat))->temp
+all_people[, eigen_cent:=temp$vector[as.character(num_emp1)]]
+all_people[is.na(eigen_cent), eigen_cent:=0]
+ggplot(data=all_people[!is.na(frac_work) & !is.na(eigen_cent), c( "eigen_cent","frac_work")],aes(x=eigen_cent, y=frac_work))+
+  geom_point(alpha=0.5)+
+  stat_summary_bin(fun.y='mean', bins=8,
+                   color='orange', size=1, geom='line')+theme_bw()
+
+
+colfunc <- colorRampPalette(c("white", "darkred"))
+nodecolor<-colfunc(uniqueN(sort(round(all_people$frac_work,2))))
+names(nodecolor)<-as.character(unique(sort(round(all_people$frac_work,2))))
+nodecolor<-nodecolor[as.character(round(all_people$frac_work,2))]
+names(nodecolor)<-all_people$num_emp1
+
+
+
+plot(igraph_mat, layout=lay_try, vertex.size=3+5*all_people$eigen_cent, vertex.label=NA,
+     edge.width = 1,
+     vertex.color=nodecolor)
+
+
+
+
+
+---
+
+nodesize<-withzeros$agency_period_tot
+nodesize<-3+nodesize/max(nodesize)*50
+names(nodesize)<-withzeros$final_id
+
+#nodecolor<-c('red', "yellow", "grey","orange","grey")
+#names(nodecolor)<-unique(withzeros$level)
+#nodecolor<-nodecolor[withzeros$level]
+#names(nodecolor)<-withzeros$umbrella_cd
+
+
+#for (x in colnames(data)[grep("exposure",colnames(data))]){
+# empname<-gsub("exposure","EMPLOYEE ",x)
+# if (nrow(data[employee_name==empname,])==0) next
+#hold_max<-max(data[employee_name==empname]$analysis_workdate)
+#hold_min<-min(data[employee_name==empname]$analysis_workdate)
+#data[analysis_workdate>hold_max | analysis_workdate<hold_min, (x) := NA ]
+#}
+
+
+
+

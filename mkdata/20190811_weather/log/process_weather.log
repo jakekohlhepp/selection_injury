@@ -1,0 +1,59 @@
+---------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /nas/longleaf/home/kohlhepp/selection_injury/mkdata/20190811_weather/log/process_weather.log
+  log type:  text
+ opened on:  10 Jan 2025, 11:45:12
+
+. set more off 
+
+. 
+. 
+. *** Process weather data for merge
+. * source: NOAA National Centers for Environmental Information, accessed 2019-08-11.
+. import delimited  using data/1834210.csv, clear
+(encoding automatically selected: ISO-8859-1)
+(56 vars, 58,350 obs)
+
+. keep if name=="LOS ANGELES DOWNTOWN USC, CA US"
+(57,376 observations deleted)
+
+. rename date _date
+
+. gen date = date(_date, "YMD")
+
+. format date %td
+
+. drop _date
+
+. 
+. 
+. * no missing temps or precips
+. assert !missing(tmax)
+
+. assert !missing(tmin)
+
+. assert !missing(prcp)
+
+. confirm numeric variable tmin tmax prcp
+
+. 
+. keep tmin tmax prcp date
+
+. isid date
+
+. 
+. compress
+  variable tmin was int now byte
+  variable date was double now int
+  (6,818 bytes saved)
+
+. save data/weather_daily, replace 
+file data/weather_daily.dta saved
+
+. 
+. log close
+      name:  <unnamed>
+       log:  /nas/longleaf/home/kohlhepp/selection_injury/mkdata/20190811_weather/log/process_weather.log
+  log type:  text
+ closed on:  10 Jan 2025, 11:45:13
+---------------------------------------------------------------------------------------------------------------

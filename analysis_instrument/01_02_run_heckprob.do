@@ -18,4 +18,3 @@ assert sample_marked==1 if has_datevar==1
 save data/01_01_estimation_sample, replace
 *******
 log close
-
